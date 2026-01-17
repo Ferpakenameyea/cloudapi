@@ -31,7 +31,7 @@ class SSH(
 
     companion object {
         fun initSSHConfig(privateKey: String, username: String): SSHConfig {
-            val file = File("/tmp/privateKey")
+            val file = File("D:\\sangfor\\cloudapi\\tmp\\privateKey")
             file.writeText(privateKey)
             return SSHConfig(privateKeyLocation = file.absolutePath, defaultUsername = username)
         }

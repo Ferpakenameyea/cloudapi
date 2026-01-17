@@ -10,30 +10,49 @@ import cn.edu.buaa.scs.model.applySangforExtraInfo
 import cn.edu.buaa.scs.utils.getConfigString
 import cn.edu.buaa.scs.utils.getValueByKey
 import cn.edu.buaa.scs.utils.jsonMapper
+import cn.edu.buaa.scs.utils.logger
 import cn.edu.buaa.scs.utils.schedule.waitForDone
 import cn.edu.buaa.scs.utils.setExpireKey
 import cn.edu.buaa.scs.vm.CreateVmOptions
 import cn.edu.buaa.scs.vm.IVMClient
+import cn.edu.buaa.scs.vm.sangfor.SangforClient.client
+import cn.edu.buaa.scs.vm.sangfor.SangforClient.uuid
+import cn.edu.buaa.scs.vm.sangfor.SangforRSA.buildPublicKey
+import cn.edu.buaa.scs.vm.sangfor.SangforRSA.rsaEncryptToHex
 import io.ktor.client.*
-import io.ktor.client.call.*
+import io.ktor.client.call.body
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.jackson.*
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
+import org.ktorm.dsl.count
 import org.ktorm.jackson.KtormModule
+import java.math.BigInteger
+import java.security.KeyFactory
+import java.security.PublicKey
+import java.security.SecureRandom
 import java.security.cert.X509Certificate
+import java.security.interfaces.RSAPublicKey
+import java.security.spec.RSAPublicKeySpec
+import java.security.spec.X509EncodedKeySpec
+import java.util.Base64
+import java.util.UUID
+import javax.crypto.Cipher
 import javax.net.ssl.X509TrustManager
 
 object SangforClient : IVMClient {
+
     val username = application.getConfigString("vm.sangfor.username")
     val password = application.getConfigString("vm.sangfor.password")
     val adminPassword = application.getConfigString("vm.sangfor.adminPassword")
+    val uuid = UUID.randomUUID().toString()
+
     private val tokenLock = Mutex()
     private val createLock = Mutex()
 
@@ -61,72 +80,81 @@ object SangforClient : IVMClient {
         }
     }
 
-    private suspend fun connect(user: String, password: String): String {
-        val response = client.post("openstack/identity/v2.0/tokens") {
+    private suspend fun encryptPassword(password: String): String {
+        val publicKeyResponse = client.get("janus/public-key") {
             contentType(ContentType.Application.Json)
-            setBody(
-                """
+            header("aCMPAuthToken", uuid)
+        }
+        val body = publicKeyResponse.body<String>()
+        val publicKeyHex = jsonMapper.readTree(body)
+            .get("data")
+            .get("public_key")
+            .textValue()
+            .trim()
+
+        return SangforRSA.encrypt(password, publicKeyHex)
+    }
+
+    internal suspend fun connect(user: String, password: String): String {
+        val encryptedPassword = encryptPassword(password)
+
+        val requestBody = """
                 {
                     "auth": {
-                        "tenantName": "$user",
                         "passwordCredentials": {
                             "username": "$user",
-                            "password": "$password"
+                            "password": "$encryptedPassword"
                         }
                     }
                 }
                 """.trimIndent()
-            )
+
+        val response = client.post("janus/authenticate") {
+            contentType(ContentType.Application.Json)
+            header("Cookie", "aCMPAuthToken=$uuid")
+            setBody(requestBody)
         }
-        val body: String = response.body()
-        return jsonMapper.readTree(body).get("access").get("token").get("id").toString().split('"')[1]
+
+        val body : String = response.body()
+        return jsonMapper.readTree(body)
+            .get("data")
+            .get("access")
+            .get("token")
+            .get("id")
+            .textValue()
     }
 
-    private suspend fun fetchTicket(token: String): Token {
-        val resBody: String = client.get("summary") {
-            header("Cookie", "aCMPAuthToken=$token")
-        }.body()
-        val ticket = jsonMapper.readTree(resBody)["data"]["ticket"].toString().split('"')[1]
-        val sid = jsonMapper.readTree(resBody)["data"]["user"]["id"].toString().split('"')[1]
-        return Token(token, ticket, sid)
-    }
-
-    private suspend fun getToken(): Token {
+    internal suspend fun getToken(): Token {
+        authRedis.getValueByKey("sangfor_token")?.let { return Token(it) }
         tokenLock.lock()
-        var token = authRedis.getValueByKey("sangfor_token")
-        var ticket = authRedis.getValueByKey("sangfor_ticket") ?: ""
-        var sid = authRedis.getValueByKey("sangfor_sid") ?: ""
-        if (token == null) {
-            token = connect(username, password)
+        try {
+            // 再次检查 Redis，避免其他协程已经写入
+            authRedis.getValueByKey("sangfor_token")?.let { return Token(it) }
+
+            val token = connect(username, password)
             authRedis.setExpireKey("sangfor_token", token, 3500)
-            val tokenBody = fetchTicket(token)
-            ticket = tokenBody.ticket
-            sid = tokenBody.sid
-            authRedis.setExpireKey("sangfor_ticket", ticket, 4000)
-            authRedis.setExpireKey("sangfor_sid", sid, 4000)
+            return Token(token)
+        } finally {
+            tokenLock.unlock()
         }
-        tokenLock.unlock()
-        return Token(token, ticket, sid)
     }
 
-    suspend fun getAdminToken(): Token {
+    internal suspend fun getAdminToken(): Token {
+        authRedis.getValueByKey("sangfor_admin_token")?.let { return Token(it) }
         tokenLock.lock()
-        var token = authRedis.getValueByKey("sangfor_admin_token")
-        var ticket = authRedis.getValueByKey("sangfor_admin_ticket") ?: ""
-        var sid = authRedis.getValueByKey("sangfor_admin_sid") ?: ""
-        if (token == null) {
-            token = connect("admin", adminPassword)
+        try {
+            // 再次检查 Redis，避免其他协程已经写入
+            authRedis.getValueByKey("sangfor_admin_token")?.let { return Token(it) }
+
+            val token = connect("admin", adminPassword)
             authRedis.setExpireKey("sangfor_admin_token", token, 3500)
-            val tokenBody = fetchTicket(token)
-            ticket = tokenBody.ticket
-            sid = tokenBody.sid
-            authRedis.setExpireKey("sangfor_admin_ticket", ticket, 4000)
-            authRedis.setExpireKey("sangfor_admin_sid", sid, 4000)
+            return Token(token)
+        } finally {
+            tokenLock.unlock()
         }
-        tokenLock.unlock()
-        return Token(token, ticket, sid)
     }
 
+    /*
     override suspend fun getHosts(): Result<List<Host>> {
         val token = getAdminToken().id
         val clusterRes: String = client.get("admin/view/cluster-list") {
@@ -135,15 +163,15 @@ object SangforClient : IVMClient {
         val clusters = jsonMapper.readTree(clusterRes)["data"]
         val hostList = mutableListOf<Host>()
         for (cluster in clusters) {
-            val cid = cluster["id"].toString().split('"')[1]
+            val cid = cluster["id"].toString().split('\"')[1]
             val hostRes: String = client.get("admin/view/host-list?cluster_id=$cid") {
                 header("Cookie", "aCMPAuthToken=${token}")
             }.body()
             val hosts = jsonMapper.readTree(hostRes)["data"]
             for (hostJSON in hosts) {
                 val host = Host(
-                    ip = hostJSON["ip"].toString().split('"')[1],
-                    status = hostJSON["status"].toString().split('"')[1],
+                    ip = hostJSON["ip"].toString().split('\"')[1],
+                    status = hostJSON["status"].toString().split('\"')[1],
                     totalMem = hostJSON["memory"]["total_mb"].doubleValue(),
                     usedMem = hostJSON["memory"]["used_mb"].doubleValue(),
                     totalCPU = hostJSON["cpu"]["total_mhz"].doubleValue(),
@@ -161,7 +189,57 @@ object SangforClient : IVMClient {
         }
         return Result.success(hostList)
     }
+    */
 
+    private suspend fun getHostVmCount(hostId: String, token: String): Int {
+        val response = client.get("janus/20180725/servers") {
+            header("Authorization", "Token $token")
+            header("Cookie", "aCMPAuthToken=$uuid")
+            contentType(ContentType.Application.Json)
+            parameter("page_num", "0")
+            parameter("page_size", "1")
+            parameter("host_id", hostId)
+        }.body<String>()
+
+        return jsonMapper.readTree(response)
+            .get("data")
+            .get("total_size")
+            .intValue()
+    }
+
+    override suspend fun getHosts(): Result<List<Host>> = coroutineScope {
+        val token = getAdminToken().id
+        val response = client.get("janus/20180725/hosts") {
+            header("Authorization", "Token $token")
+            header("Cookie", "aCMPAuthToken=$uuid")
+            contentType(ContentType.Application.Json)
+        }.body<String>()
+
+        val hostJsonArray = jsonMapper.readTree(response)["data"]["data"]
+
+        val deferred = hostJsonArray.map { hostJson ->
+            async {
+                val hostId = hostJson["id"].textValue()
+                val vmCount = getHostVmCount(hostId, token)
+                Host(
+                    ip           = hostJson["ip"].textValue(),
+                    status       = hostJson["status"].textValue(),
+                    totalMem     = hostJson["memory"]["total_mb"].doubleValue(),
+                    usedMem      = hostJson["memory"]["used_mb"].doubleValue(),
+                    totalCPU     = hostJson["cpu"]["total_mhz"].doubleValue(),
+                    usedCPU      = hostJson["cpu"]["used_mhz"].doubleValue(),
+                    totalStorage = hostJson["storage"]["total_mb"].doubleValue().toLong(),
+                    usedStorage  = 0L,
+                    count        = vmCount
+                )
+            }
+        }
+
+        Result.success(deferred.awaitAll())
+    }
+
+
+    /*
     override suspend fun getAllVMs(): Result<List<VirtualMachine>> {
         // Get all virtual machines
         val token = getToken().id
@@ -174,7 +252,7 @@ object SangforClient : IVMClient {
             val jobs = mutableListOf<Deferred<VirtualMachine>>()
             for (vmJSON in vms) {
                 val job = async {
-                    return@async getVM(vmJSON["id"].toString().split('"')[1]).getOrThrow()
+                    return@async getVM(vmJSON["id"].toString().split('\"')[1]).getOrThrow()
                 }
                 jobs.add(job)
             }
@@ -184,7 +262,13 @@ object SangforClient : IVMClient {
         }
         return Result.success(vmList)
     }
+    */
 
+    override suspend fun getAllVMs(): Result<List<VirtualMachine>> {
+        throw NotImplementedError("SangforClient.getAllVMs is not implemented")
+    }
+
+    /*
     override suspend fun getVM(uuid: String): Result<VirtualMachine> {
         val token = getToken()
         val vmRes: String = client.get("admin/view/server-info?id=$uuid") {
@@ -194,30 +278,42 @@ object SangforClient : IVMClient {
         val vm = VirtualMachine()
         vm.uuid = uuid
         vm.platform = "sangfor"
-        vm.name = vmJSON["data"]["name"].toString().split('"')[1]
-        vm.host = vmJSON["data"]["host_name"].toString().split('"')[1]
-        vm.applySangforExtraInfo(vmJSON["data"]["description"].toString().split('"')[1])
+        vm.name = vmJSON["data"]["name"].toString().split('\"')[1]
+        vm.host = vmJSON["data"]["host_name"].toString().split('\"')[1]
+        vm.applySangforExtraInfo(vmJSON["data"]["description"].toString().split('\"')[1])
         vm.memory = vmJSON["data"]["memory_mb"].intValue()
         vm.cpu = vmJSON["data"]["cores"].intValue()
-        vm.osFullName = vmJSON["data"]["os_name"].toString().split('"')[1]
+        vm.osFullName = vmJSON["data"]["os_name"].toString().split('\"')[1]
         vm.diskNum = vmJSON["data"]["disks"].size()
         vm.diskSize = vmJSON["data"]["disks"].map {
             it["size_mb"].longValue()
         }.reduce { s, s1 -> s + s1 } * 1048576L
-        vm.powerState = VirtualMachine.PowerState.from(if (vmJSON["data"]["power_state"].toString().split('"')[1] == "on") "poweredon" else "poweredoff")
+        vm.powerState = VirtualMachine.PowerState.from(if (vmJSON["data"]["power_state"].toString().split('\"')[1] == "on") "poweredon" else "poweredoff")
         vm.overallStatus = VirtualMachine.OverallStatus.from("green")
         vm.netInfos = vmJSON["data"]["networks"].map {
-            VirtualMachine.NetInfo(it["mac"].toString().split('"')[1], listOf(it["ip"].toString().split('"')[1]))
+            VirtualMachine.NetInfo(it["mac"].toString().split('\"')[1], listOf(it["ip"].toString().split('\"')[1]))
         }
         return Result.success(vm)
     }
-    
+    */
+
+    override suspend fun getVM(uuid: String): Result<VirtualMachine> {
+        throw NotImplementedError("SangforClient.getVM is not implemented")
+    }
+
+    /*
     override suspend fun getVMByName(name: String, applyId: String): Result<VirtualMachine> = runCatching {
         getAllVMs().getOrElse { listOf() }.find { vm ->
             vm.name == name && vm.applyId == applyId
         } ?: throw NotFoundException("virtualMachine($name) not found")
     }
+    */
 
+    override suspend fun getVMByName(name: String, applyId: String): Result<VirtualMachine> {
+        throw NotImplementedError("SangforClient.getVMByName is not implemented")
+    }
+
+    /*
     override suspend fun powerOnSync(uuid: String): Result<Unit> {
         powerOnAsync(uuid)
         return waitForDone(50000L, 500L) {
@@ -229,7 +325,13 @@ object SangforClient : IVMClient {
             vmJSON["data"]["power_state"].toString() == "\"on\""
         }
     }
+    */
 
+    override suspend fun powerOnSync(uuid: String): Result<Unit> {
+        throw NotImplementedError("SangforClient.powerOnSync is not implemented")
+    }
+
+    /*
     override suspend fun powerOnAsync(uuid: String) {
         val token = getToken().id
         /* 成功：202，失败：409 */
@@ -245,7 +347,13 @@ object SangforClient : IVMClient {
             )
         }
     }
+    */
 
+    override suspend fun powerOnAsync(uuid: String) {
+        throw NotImplementedError("SangforClient.powerOnAsync is not implemented")
+    }
+
+    /*
     override suspend fun powerOffSync(uuid: String): Result<Unit> {
         powerOffAsync(uuid)
         return waitForDone(50000L, 500L) {
@@ -257,7 +365,13 @@ object SangforClient : IVMClient {
             vmJSON["data"]["power_state"].toString() == "\"off\""
         }
     }
+    */
 
+    override suspend fun powerOffSync(uuid: String): Result<Unit> {
+        throw NotImplementedError("SangforClient.powerOffSync is not implemented")
+    }
+
+    /*
     override suspend fun powerOffAsync(uuid: String) {
         val token = getToken().id
         /* 成功：202，失败：409 */
@@ -273,7 +387,13 @@ object SangforClient : IVMClient {
             )
         }
     }
+    */
 
+    override suspend fun powerOffAsync(uuid: String) {
+        throw NotImplementedError("SangforClient.powerOffAsync is not implemented")
+    }
+
+    /*
     override suspend fun configVM(
         uuid: String,
         experimentId: Int?,
@@ -287,15 +407,15 @@ object SangforClient : IVMClient {
         }.body()
         val vmJSON = jsonMapper.readTree(vmRes)["data"]
         val oldSetting = OldSetting(
-            vmJSON["name"].toString().split('"')[1],
-            vmJSON["description"].toString().split('"')[1],
+            vmJSON["name"].toString().split('\"')[1],
+            vmJSON["description"].toString().split('\"')[1],
             vmJSON["memory_mb"].intValue(),
             vmJSON["cores"].intValue(),
             vmJSON["data"]["disks"].map {
                 it["size_mb"].longValue()
             }.reduce { s, s1 -> s + s1 },
-            vmJSON["networks"][0]["mac"].toString().split('"')[1].lowercase(),
-            vmJSON["os_type"].toString().split('"')[1],
+            vmJSON["networks"][0]["mac"].toString().split('\"')[1].lowercase(),
+            vmJSON["os_type"].toString().split('\"')[1],
         )
         var owner = "default"
         teacherId?.let {
@@ -323,7 +443,19 @@ object SangforClient : IVMClient {
         )
         return getVM(uuid)
     }
+    */
 
+    override suspend fun configVM(
+        uuid: String,
+        experimentId: Int?,
+        adminId: String?,
+        teacherId: String?,
+        studentId: String?
+    ): Result<VirtualMachine> {
+        throw NotImplementedError("SangforClient.configVM is not implemented")
+    }
+
+    /*
     override suspend fun createVM(options: CreateVmOptions): Result<VirtualMachine> {
         createLock.lock()
         // Send clone vm request.
@@ -348,7 +480,7 @@ object SangforClient : IVMClient {
             val vms = jsonMapper.readTree(vmsRes)["servers"]
             for (vmJSON in vms) {
                 if (vmJSON["OS-EXT-STS:task_state"].toString() == "\"creating\"") {
-                    uuid = vmJSON["id"].toString().split('"')[1]
+                    uuid = vmJSON["id"].toString().split('\"')[1]
                 }
             }
             uuid != ""
@@ -369,15 +501,15 @@ object SangforClient : IVMClient {
         val vmJSON = jsonMapper.readTree(vmRes)["data"]
         println(vmJSON.toString())
         val oldSetting = OldSetting(
-            vmJSON["name"].toString().split('"')[1],
-            vmJSON["description"].toString().split('"')[1],
+            vmJSON["name"].toString().split('\"')[1],
+            vmJSON["description"].toString().split('\"')[1],
             vmJSON["memory_mb"].intValue(),
             vmJSON["cores"].intValue(),
             vmJSON["disks"].map {
                 it["size_mb"].longValue()
             }.reduce { s, s1 -> s + s1 },
-            vmJSON["networks"][0]["mac"].toString().split('"')[1].lowercase(),
-            vmJSON["os_type"].toString().split('"')[1],
+            vmJSON["networks"][0]["mac"].toString().split('\"')[1].lowercase(),
+            vmJSON["os_type"].toString().split('\"')[1],
         )
         initSettings(
             uuid,
@@ -391,7 +523,13 @@ object SangforClient : IVMClient {
         if(options.powerOn) powerOnAsync(uuid)
         return getVM(uuid)
     }
+    */
 
+    override suspend fun createVM(options: CreateVmOptions): Result<VirtualMachine> {
+        throw NotImplementedError("SangforClient.createVM is not implemented")
+    }
+
+    /*
     /* The virtual machine must be powered off. */
     override suspend fun deleteVM(uuid: String): Result<Unit> {
         /* 成功：204，失败：409 */
@@ -402,7 +540,13 @@ object SangforClient : IVMClient {
         }.status.value
         return Result.success(Unit)
     }
+    */
 
+    override suspend fun deleteVM(uuid: String): Result<Unit> {
+        throw NotImplementedError("SangforClient.deleteVM is not implemented")
+    }
+
+    /*
     /* The virtual machine must be powered off. */
     override suspend fun convertVMToTemplate(uuid: String): Result<VirtualMachine> {
         val token = getToken()
@@ -411,17 +555,17 @@ object SangforClient : IVMClient {
         }.body()
         val vmJSON = jsonMapper.readTree(vmRes)["data"]
         val oldSetting = OldSetting(
-            vmJSON["name"].toString().split('"')[1],
-            vmJSON["description"].toString().split('"')[1],
+            vmJSON["name"].toString().split('\"')[1],
+            vmJSON["description"].toString().split('\"')[1],
             vmJSON["memory_mb"].intValue(),
             vmJSON["cores"].intValue(),
             vmJSON["data"]["disks"].map {
                 it["size_mb"].longValue()
             }.reduce { s, s1 -> s + s1 },
-            vmJSON["networks"][0]["mac"].toString().split('"')[1].lowercase(),
-            vmJSON["os_type"].toString().split('"')[1],
+            vmJSON["networks"][0]["mac"].toString().split('\"')[1].lowercase(),
+            vmJSON["os_type"].toString().split('\"')[1],
         )
-        val info = vmJSON["description"].toString().split('"')[1].split(',')
+        val info = vmJSON["description"].toString().split('\"')[1].split(',')
         var description = "default,true,-1,"
         if (info.size == 4) description = "${info[0]},true,${info[2]},${info[3]}"
         initSettings(
@@ -435,7 +579,13 @@ object SangforClient : IVMClient {
         )
         return getVM(uuid)
     }
+    */
 
+    override suspend fun convertVMToTemplate(uuid: String): Result<VirtualMachine> {
+        throw NotImplementedError("SangforClient.convertVMToTemplate is not implemented")
+    }
+
+    /*
     suspend fun clone(name: String,
                       templateUuid: String,
                       description: String
@@ -465,7 +615,16 @@ object SangforClient : IVMClient {
             )
         }.status.value
     }
+    */
 
+    suspend fun clone(name: String,
+                      templateUuid: String,
+                      description: String
+    ) {
+        throw NotImplementedError("SangforClient.clone is not implemented")
+    }
+
+    /*
     /* The virtual machine must be powered off. */
     suspend fun initSettings(uuid: String,
                                name: String,
@@ -597,12 +756,24 @@ object SangforClient : IVMClient {
             )
         }.status.value
     }
+    */
+
+    suspend fun initSettings(uuid: String,
+                               name: String,
+                               description: String,
+                               memory: Int,
+                               cores: Int,
+                               disk: Long,
+                               oldSetting: OldSetting
+    ) {
+        throw NotImplementedError("SangforClient.initSettings is not implemented")
+    }
 }
 
 data class Token(
     val id: String,
-    val ticket: String,
-    val sid: String
+//    val ticket: String,
+//    val sid: String
 )
 
 data class OldSetting(
@@ -614,3 +785,42 @@ data class OldSetting(
     val mac: String,
     val osType: String
 )
+
+object SangforRSA {
+    private fun buildPublicKey(modulusHex: String): RSAPublicKey {
+        val modulus = BigInteger(modulusHex, 16)   // OK：正数
+        val exponent = BigInteger("10001", 16)     // 固定
+
+        val spec = RSAPublicKeySpec(modulus, exponent)
+        val factory = KeyFactory.getInstance("RSA")
+        return factory.generatePublic(spec) as RSAPublicKey
+    }
+
+
+    private fun rsaEncryptToHex(
+        plainText: String,
+        publicKey: RSAPublicKey
+    ): String {
+        val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+        cipher.init(
+            Cipher.ENCRYPT_MODE,
+            publicKey,
+            SecureRandom()
+        )
+
+        val encrypted = cipher.doFinal(
+            plainText.toByteArray(Charsets.UTF_8)
+        )
+
+        return encrypted.joinToString("") {
+            "%02x".format(it)
+        }
+    }
+
+    fun encrypt(text: String, publicKeyHex: String): String {
+        val publicKey = buildPublicKey(publicKeyHex)
+        val encrypted = rsaEncryptToHex(text, publicKey)
+
+        return encrypted
+    }
+}
