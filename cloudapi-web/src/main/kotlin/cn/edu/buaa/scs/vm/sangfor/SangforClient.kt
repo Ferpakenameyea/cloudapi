@@ -10,38 +10,30 @@ import cn.edu.buaa.scs.model.applySangforExtraInfo
 import cn.edu.buaa.scs.utils.getConfigString
 import cn.edu.buaa.scs.utils.getValueByKey
 import cn.edu.buaa.scs.utils.jsonMapper
-import cn.edu.buaa.scs.utils.logger
 import cn.edu.buaa.scs.utils.schedule.waitForDone
 import cn.edu.buaa.scs.utils.setExpireKey
 import cn.edu.buaa.scs.vm.CreateVmOptions
 import cn.edu.buaa.scs.vm.IVMClient
-import cn.edu.buaa.scs.vm.sangfor.SangforClient.client
-import cn.edu.buaa.scs.vm.sangfor.SangforClient.uuid
-import cn.edu.buaa.scs.vm.sangfor.SangforRSA.buildPublicKey
-import cn.edu.buaa.scs.vm.sangfor.SangforRSA.rsaEncryptToHex
 import io.ktor.client.*
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.serialization.jackson.*
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
-import org.ktorm.dsl.count
 import org.ktorm.jackson.KtormModule
 import java.math.BigInteger
 import java.security.KeyFactory
-import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.RSAPublicKeySpec
-import java.security.spec.X509EncodedKeySpec
-import java.util.Base64
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.net.ssl.X509TrustManager
@@ -51,7 +43,7 @@ object SangforClient : IVMClient {
     val username = application.getConfigString("vm.sangfor.username")
     val password = application.getConfigString("vm.sangfor.password")
     val adminPassword = application.getConfigString("vm.sangfor.adminPassword")
-    val uuid = UUID.randomUUID().toString()
+    val aCMPAuthToken = UUID.randomUUID().toString()
 
     private val tokenLock = Mutex()
     private val createLock = Mutex()
@@ -83,7 +75,7 @@ object SangforClient : IVMClient {
     private suspend fun encryptPassword(password: String): String {
         val publicKeyResponse = client.get("janus/public-key") {
             contentType(ContentType.Application.Json)
-            header("aCMPAuthToken", uuid)
+            header("aCMPAuthToken", aCMPAuthToken)
         }
         val body = publicKeyResponse.body<String>()
         val publicKeyHex = jsonMapper.readTree(body)
@@ -111,7 +103,7 @@ object SangforClient : IVMClient {
 
         val response = client.post("janus/authenticate") {
             contentType(ContentType.Application.Json)
-            header("Cookie", "aCMPAuthToken=$uuid")
+            header("Cookie", "aCMPAuthToken=$aCMPAuthToken")
             setBody(requestBody)
         }
 
@@ -154,47 +146,10 @@ object SangforClient : IVMClient {
         }
     }
 
-    /*
-    override suspend fun getHosts(): Result<List<Host>> {
-        val token = getAdminToken().id
-        val clusterRes: String = client.get("admin/view/cluster-list") {
-            header("Cookie", "aCMPAuthToken=${token}")
-        }.body()
-        val clusters = jsonMapper.readTree(clusterRes)["data"]
-        val hostList = mutableListOf<Host>()
-        for (cluster in clusters) {
-            val cid = cluster["id"].toString().split('\"')[1]
-            val hostRes: String = client.get("admin/view/host-list?cluster_id=$cid") {
-                header("Cookie", "aCMPAuthToken=${token}")
-            }.body()
-            val hosts = jsonMapper.readTree(hostRes)["data"]
-            for (hostJSON in hosts) {
-                val host = Host(
-                    ip = hostJSON["ip"].toString().split('\"')[1],
-                    status = hostJSON["status"].toString().split('\"')[1],
-                    totalMem = hostJSON["memory"]["total_mb"].doubleValue(),
-                    usedMem = hostJSON["memory"]["used_mb"].doubleValue(),
-                    totalCPU = hostJSON["cpu"]["total_mhz"].doubleValue(),
-                    usedCPU = hostJSON["cpu"]["used_mhz"].doubleValue(),
-                    totalStorage = if (hostJSON["disks"].size() != 0) {
-                        hostJSON["disks"].map {
-                            it["disk_size_byte"].longValue()
-                        }.reduce { s, s1 -> s + s1 }
-                    } else { 0 },
-                    usedStorage = 0L,
-                    count = hostJSON["count"].intValue(),
-                )
-                hostList.add(host)
-            }
-        }
-        return Result.success(hostList)
-    }
-    */
-
     private suspend fun getHostVmCount(hostId: String, token: String): Int {
         val response = client.get("janus/20180725/servers") {
             header("Authorization", "Token $token")
-            header("Cookie", "aCMPAuthToken=$uuid")
+            header("Cookie", "aCMPAuthToken=$aCMPAuthToken")
             contentType(ContentType.Application.Json)
             parameter("page_num", "0")
             parameter("page_size", "1")
@@ -211,7 +166,7 @@ object SangforClient : IVMClient {
         val token = getAdminToken().id
         val response = client.get("janus/20180725/hosts") {
             header("Authorization", "Token $token")
-            header("Cookie", "aCMPAuthToken=$uuid")
+            header("Cookie", "aCMPAuthToken=$aCMPAuthToken")
             contentType(ContentType.Application.Json)
         }.body<String>()
 
@@ -238,159 +193,158 @@ object SangforClient : IVMClient {
         Result.success(deferred.awaitAll())
     }
 
-
-    /*
     override suspend fun getAllVMs(): Result<List<VirtualMachine>> {
-        // Get all virtual machines
         val token = getToken().id
-        val vmsRes: String = client.get("openstack/compute/v2/servers") {
-            header("X-Auth-Token", token)
-        }.body()
-        val vmList = mutableListOf<VirtualMachine>()
-        val vms = jsonMapper.readTree(vmsRes).get("servers")
-        runBlocking {
-            val jobs = mutableListOf<Deferred<VirtualMachine>>()
-            for (vmJSON in vms) {
-                val job = async {
-                    return@async getVM(vmJSON["id"].toString().split('\"')[1]).getOrThrow()
+        val vmsRes = client.get("janus/20180725/servers") {
+            header("Cookie", "aCMPAuthToken=$aCMPAuthToken")
+            header("Authorization", "Token $token")
+        }.body<String>()
+
+        val vmsJsonArray = jsonMapper.readTree(vmsRes)["data"]["data"]
+
+        val list = vmsJsonArray.map{
+            VirtualMachine().apply {
+                uuid            = it["id"].textValue()
+                platform        = "sangfor"
+                name            = it["name"].textValue()
+                host            = it["host_name"].textValue()
+                memory          = it["memory_mb"].intValue()
+                cpu             = it["cores"].intValue()
+                osFullName      = it["os_name"].textValue()
+                diskNum         = it["disks"].size()
+                diskSize        = it["disks"].sumOf { disk -> disk["size_mb"].longValue() } * 1048576L
+                powerState      = VirtualMachine.PowerState.from(if (it["power_state"].textValue() == "on") "poweredon" else "poweredoff")
+                overallStatus   = VirtualMachine.OverallStatus.from("green")
+                netInfos        = it["networks"].map { net ->
+                    VirtualMachine.NetInfo(
+                        macAddress = net["mac"].textValue(),
+                        ipList = listOf(net["ip"].textValue())
+                    )
                 }
-                jobs.add(job)
-            }
-            for (job in jobs) {
-                vmList.add(job.await())
+                applySangforExtraInfo(it["description"].textValue())
             }
         }
-        return Result.success(vmList)
-    }
-    */
 
-    override suspend fun getAllVMs(): Result<List<VirtualMachine>> {
-        throw NotImplementedError("SangforClient.getAllVMs is not implemented")
+        return Result.success(list)
     }
 
-    /*
     override suspend fun getVM(uuid: String): Result<VirtualMachine> {
-        val token = getToken()
-        val vmRes: String = client.get("admin/view/server-info?id=$uuid") {
-            header("Cookie", "aCMPAuthToken=${token.id}")
-        }.body()
-        val vmJSON = jsonMapper.readTree(vmRes)
-        val vm = VirtualMachine()
-        vm.uuid = uuid
-        vm.platform = "sangfor"
-        vm.name = vmJSON["data"]["name"].toString().split('\"')[1]
-        vm.host = vmJSON["data"]["host_name"].toString().split('\"')[1]
-        vm.applySangforExtraInfo(vmJSON["data"]["description"].toString().split('\"')[1])
-        vm.memory = vmJSON["data"]["memory_mb"].intValue()
-        vm.cpu = vmJSON["data"]["cores"].intValue()
-        vm.osFullName = vmJSON["data"]["os_name"].toString().split('\"')[1]
-        vm.diskNum = vmJSON["data"]["disks"].size()
-        vm.diskSize = vmJSON["data"]["disks"].map {
-            it["size_mb"].longValue()
-        }.reduce { s, s1 -> s + s1 } * 1048576L
-        vm.powerState = VirtualMachine.PowerState.from(if (vmJSON["data"]["power_state"].toString().split('\"')[1] == "on") "poweredon" else "poweredoff")
-        vm.overallStatus = VirtualMachine.OverallStatus.from("green")
-        vm.netInfos = vmJSON["data"]["networks"].map {
-            VirtualMachine.NetInfo(it["mac"].toString().split('\"')[1], listOf(it["ip"].toString().split('\"')[1]))
-        }
+        val token = getToken().id
+        val vmRes = client.get("janus/20180725/servers/$uuid") {
+            header("Cookie", "aCMPAuthToken=${SangforClient.aCMPAuthToken}")
+            header("Authorization", "Token $token")
+        }.body<String>()
+
+        val data = jsonMapper.readTree(vmRes)["data"]
+
+        val vm = data.let { VirtualMachine().apply {
+            this.uuid = uuid
+            platform        = "sangfor"
+            name            = it["name"].textValue()
+            host            = it["host_name"].textValue()
+            memory          = it["memory_mb"].intValue()
+            cpu             = it["cores"].intValue()
+            osFullName      = it["os_name"].textValue()
+            diskNum         = it["disks"].size()
+            diskSize        = it["disks"].sumOf { disk -> disk["size_mb"].longValue() } * 1048576L
+            powerState      = VirtualMachine.PowerState.from(if (it["power_state"].textValue() == "on") "poweredon" else "poweredoff")
+            overallStatus   = VirtualMachine.OverallStatus.from("green")
+            netInfos        = it["networks"].map { net ->
+                VirtualMachine.NetInfo(
+                    macAddress = net["mac"].textValue(),
+                    ipList = listOf(net["ip"].textValue())
+                )
+            }
+            applySangforExtraInfo(it["description"].textValue())
+        }}
+
         return Result.success(vm)
     }
-    */
 
-    override suspend fun getVM(uuid: String): Result<VirtualMachine> {
-        throw NotImplementedError("SangforClient.getVM is not implemented")
-    }
-
-    /*
     override suspend fun getVMByName(name: String, applyId: String): Result<VirtualMachine> = runCatching {
-        getAllVMs().getOrElse { listOf() }.find { vm ->
-            vm.name == name && vm.applyId == applyId
-        } ?: throw NotFoundException("virtualMachine($name) not found")
-    }
-    */
-
-    override suspend fun getVMByName(name: String, applyId: String): Result<VirtualMachine> {
-        throw NotImplementedError("SangforClient.getVMByName is not implemented")
+        this.getAllVMs()
+            .getOrElse { emptyList() }
+            .find { vm ->
+                vm.name == name && vm.applyId == applyId
+            } ?: throw NotFoundException("virtualMachine($name) not found")
     }
 
-    /*
     override suspend fun powerOnSync(uuid: String): Result<Unit> {
         powerOnAsync(uuid)
         return waitForDone(50000L, 500L) {
-            val token = getToken()
-            val vmRes: String = client.get("admin/view/server-info?id=$uuid") {
-                header("Cookie", "aCMPAuthToken=${token.id}")
+            val token = getToken().id
+            val vmRes: String = client.get("janus/20180725/servers/$uuid") {
+                contentType(ContentType.Application.Json)
+                header("Authorization", "Token $token")
+                header("Cookie", "aCMPAuthToken=$aCMPAuthToken")
             }.body()
-            val vmJSON = jsonMapper.readTree(vmRes)
-            vmJSON["data"]["power_state"].toString() == "\"on\""
+
+            val vmJson = jsonMapper.readTree(vmRes)
+            vmJson["data"]["status"].textValue() == "on"
         }
     }
-    */
 
-    override suspend fun powerOnSync(uuid: String): Result<Unit> {
-        throw NotImplementedError("SangforClient.powerOnSync is not implemented")
-    }
-
-    /*
     override suspend fun powerOnAsync(uuid: String) {
-        val token = getToken().id
-        /* 成功：202，失败：409 */
-        client.post("openstack/compute/v2/servers/$uuid/action") {
+        val token = getAdminToken().id
+        val response = client.post("janus/20180725/servers/action") {
             contentType(ContentType.Application.Json)
-            header("X-Auth-Token", token)
-            setBody(
-                """
+            header("Authorization", "Token $token")
+            header("Cookie", "aCMPAuthToken=$aCMPAuthToken")
+            setBody("""
                 {
-                    "os-start": null
+                    "server_ids": ["$uuid"],
+                    "server_action": {
+                        "start_servers_action": ""
+                    }
                 }
-                """.trimIndent()
+            """.trimIndent())
+        }
+
+        if (!response.status.isSuccess()) {
+            throw SangforHttpExcetion(
+                response.status,
+                response.bodyAsText()
             )
         }
     }
-    */
 
-    override suspend fun powerOnAsync(uuid: String) {
-        throw NotImplementedError("SangforClient.powerOnAsync is not implemented")
-    }
-
-    /*
     override suspend fun powerOffSync(uuid: String): Result<Unit> {
         powerOffAsync(uuid)
         return waitForDone(50000L, 500L) {
-            val token = getToken()
-            val vmRes: String = client.get("admin/view/server-info?id=$uuid") {
-                header("Cookie", "aCMPAuthToken=${token.id}")
+            val token = getToken().id
+            val vmRes: String = client.get("janus/20180725/servers/$uuid") {
+                contentType(ContentType.Application.Json)
+                header("Authorization", "Token $token")
+                header("Cookie", "aCMPAuthToken=$aCMPAuthToken")
             }.body()
-            val vmJSON = jsonMapper.readTree(vmRes)
-            vmJSON["data"]["power_state"].toString() == "\"off\""
+
+            val vmJson = jsonMapper.readTree(vmRes)
+            vmJson["data"]["status"].textValue() == "off"
         }
     }
-    */
 
-    override suspend fun powerOffSync(uuid: String): Result<Unit> {
-        throw NotImplementedError("SangforClient.powerOffSync is not implemented")
-    }
-
-    /*
     override suspend fun powerOffAsync(uuid: String) {
-        val token = getToken().id
-        /* 成功：202，失败：409 */
-        client.post("openstack/compute/v2/servers/$uuid/action") {
+        val token = getAdminToken().id
+        val response = client.post("janus/20180725/servers/action") {
             contentType(ContentType.Application.Json)
-            header("X-Auth-Token", token)
-            setBody(
-                """
+            header("Authorization", "Token $token")
+            header("Cookie", "aCMPAuthToken=$aCMPAuthToken")
+            setBody("""
                 {
-                    "os-stop": null
+                    "server_ids": ["$uuid"],
+                    "server_action": {
+                        "stop_servers_action": ""
+                    }
                 }
-                """.trimIndent()
+            """.trimIndent())
+        }
+
+        if (!response.status.isSuccess()) {
+            throw SangforHttpExcetion(
+                response.status,
+                response.bodyAsText()
             )
         }
-    }
-    */
-
-    override suspend fun powerOffAsync(uuid: String) {
-        throw NotImplementedError("SangforClient.powerOffAsync is not implemented")
     }
 
     /*
@@ -786,7 +740,7 @@ data class OldSetting(
     val osType: String
 )
 
-object SangforRSA {
+internal object SangforRSA {
     private fun buildPublicKey(modulusHex: String): RSAPublicKey {
         val modulus = BigInteger(modulusHex, 16)   // OK：正数
         val exponent = BigInteger("10001", 16)     // 固定

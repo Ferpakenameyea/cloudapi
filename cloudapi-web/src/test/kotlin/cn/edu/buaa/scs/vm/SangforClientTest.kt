@@ -52,4 +52,31 @@ class SangforClientTest {
             }
         }
     }
+
+    @Test
+    fun testGetVms() {
+        withApplication(testEnv) {
+            runBlocking {
+                SangforClient.getAllVMs()
+            }
+        }
+    }
+
+    @Test
+    fun testPowerOnVm() {
+        withApplication(testEnv) {
+            runBlocking {
+                SangforClient.powerOnSync("20abbb5f-584b-4491-8abf-284d1968cba4")
+            }
+        }
+    }
+
+    @Test
+    fun testPowerOffVm() {
+        withApplication(testEnv) {
+            runBlocking {
+                SangforClient.powerOffSync("20abbb5f-584b-4491-8abf-284d1968cba4")
+            }
+        }
+    }
 }
