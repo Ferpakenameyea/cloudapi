@@ -1,5 +1,6 @@
 package cn.edu.buaa.scs.vm
 
+import cn.edu.buaa.scs.model.VirtualMachineExtraInfo
 import cn.edu.buaa.scs.testEnv
 import cn.edu.buaa.scs.vm.sangfor.SangforClient
 import io.ktor.server.testing.withApplication
@@ -76,6 +77,34 @@ class SangforClientTest {
         withApplication(testEnv) {
             runBlocking {
                 SangforClient.powerOffSync("20abbb5f-584b-4491-8abf-284d1968cba4")
+            }
+        }
+    }
+
+    @Test
+    fun testGetVm() {
+        withApplication(testEnv) {
+            runBlocking {
+                SangforClient.getVM("20abbb5f-584b-4491-8abf-284d1968cba4")
+            }
+        }
+    }
+
+    @Test
+    fun testCreateVm() {
+        withApplication(testEnv) {
+            val options = CreateVmOptions(
+                name = "test-please-delete",
+                memory = 2048,
+                powerOn = true,
+                disNum = 1,
+                cpu = 1,
+                diskSize = 4L * 1024L * 1024L * 1024L, // 4GB
+                extraInfo = VirtualMachineExtraInfo(templateUuid = "7f8aefb0-2044-4814-adac-1abbc85ac607")
+            )
+
+            runBlocking {
+                SangforClient.createVM(options)
             }
         }
     }
