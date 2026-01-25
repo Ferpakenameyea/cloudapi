@@ -108,4 +108,15 @@ class SangforClientTest {
             }
         }
     }
+
+    // NOTE: Sangfor platform bug make editing impossible
+    // thus this test will fail unless sangfor fix
+    @Test
+    fun testConvertToTemplate() {
+        withApplication(testEnv) {
+            runBlocking {
+                SangforClient.convertVMToTemplate("18f34367-a414-4b56-ac90-e65bfec18173")
+            }
+        }
+    }
 }

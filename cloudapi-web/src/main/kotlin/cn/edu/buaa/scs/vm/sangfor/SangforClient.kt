@@ -44,10 +44,17 @@ import javax.net.ssl.X509TrustManager
 
 object SangforClient : IVMClient {
 
-    val username = application.getConfigString("vm.sangfor.username")
-    val password = application.getConfigString("vm.sangfor.password")
-    val adminPassword = application.getConfigString("vm.sangfor.adminPassword")
-    val aCMPAuthToken = UUID.randomUUID().toString()
+    private val username = application.getConfigString("vm.sangfor.username")
+    private val password = application.getConfigString("vm.sangfor.password")
+
+    // admin password is the password of username 'admin'
+    // some api needs priority of administrator to continue
+    private val adminPassword = application.getConfigString("vm.sangfor.adminPassword")
+
+    // aCMPAuthToken is for request header
+    // Sangfor http api needs header:
+    // 'Cookie: aCMPAuthToken=<some string>'
+    private val aCMPAuthToken = UUID.randomUUID().toString()
 
     private val tokenLock = Mutex()
     private val createLock = Mutex()
@@ -263,7 +270,7 @@ object SangforClient : IVMClient {
 
     override suspend fun powerOnAsync(uuid: String) {
         val token = getAdminToken().id
-        val response = client.post("janus/20180725/servers/action") {
+        client.post("janus/20180725/servers/action") {
             configureHeader()
             addAuthorization(token)
             setBody("""
@@ -274,14 +281,7 @@ object SangforClient : IVMClient {
                     }
                 }
             """.trimIndent())
-        }
-
-        if (!response.status.isSuccess()) {
-            throw SangforHttpExcetion(
-                response.status,
-                response.body<String>()
-            )
-        }
+        }.also { SangforHttpExcetion.mustBeSuccess(it) }
     }
 
     override suspend fun powerOffSync(uuid: String): Result<Unit> {
@@ -300,7 +300,7 @@ object SangforClient : IVMClient {
 
     override suspend fun powerOffAsync(uuid: String) {
         val token = getAdminToken().id
-        val response = client.post("janus/20180725/servers/action") {
+        client.post("janus/20180725/servers/action") {
             configureHeader()
             addAuthorization(token)
             setBody("""
@@ -311,16 +311,10 @@ object SangforClient : IVMClient {
                     }
                 }
             """.trimIndent())
-        }
-
-        if (!response.status.isSuccess()) {
-            throw SangforHttpExcetion(
-                response.status,
-                response.bodyAsText()
-            )
-        }
+        }.also { SangforHttpExcetion.mustBeSuccess(it) }
     }
 
+    // NOTE: Sangfor platform bug make editing impossible
     override suspend fun configVM(
         uuid: String,
         experimentId: Int?,
@@ -357,7 +351,7 @@ object SangforClient : IVMClient {
 
         val description = "$owner,false,$eid,$applyId"
 
-        val response = client.put("janus/20180728/servers/$uuid") {
+        val task = client.put("janus/20180728/servers/$uuid") {
             configureHeader()
             addAuthorization(suspend { getAdminToken().id })
             setBody("""
@@ -365,14 +359,15 @@ object SangforClient : IVMClient {
                     "description": "$description"
                 }
             """.trimIndent())
-        }
+        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+            .bodyAsText()
+            .let { jsonMapper.readTree(it) }
+            .get("data")
+            .get("task_id")
+            .textValue()
+            .let { SangforAsyncTask(taskId = it, extraData = Unit) }
 
-        if (!response.status.isSuccess()) {
-            throw SangforHttpExcetion(
-                response.status,
-                response.body<String>()
-            )
-        }
+        task.await(client, suspend { getToken().id })
 
         return getVM(uuid)
     }
@@ -383,7 +378,6 @@ object SangforClient : IVMClient {
 
         val asyncTask: SangforAsyncTask<String>
         try {
-
             val owner = if (options.extraInfo.teacherId != "default") options.extraInfo.teacherId
             else if (options.extraInfo.studentId != "default") options.extraInfo.studentId
             else "default"
@@ -395,6 +389,8 @@ object SangforClient : IVMClient {
                 description
             )
         } finally {
+            // put unlock to 'finally' block so that when it fails
+            // due to exception the lock will release
             createLock.unlock()
         }
 
@@ -413,7 +409,7 @@ object SangforClient : IVMClient {
             response.status.isSuccess()
         }
 
-        val configureResponse = client.put("janus/20180725/servers/$virtualMachineUUID") {
+        client.put("janus/20180725/servers/$virtualMachineUUID") {
             configureHeader()
             addAuthorization(suspend { getToken().id })
             setBody("""
@@ -430,14 +426,13 @@ object SangforClient : IVMClient {
                     }]
                 }
             """.trimIndent())
-        }
-
-        if (!configureResponse.status.isSuccess()) {
-            throw SangforHttpExcetion(
-                configureResponse.status,
-                configureResponse.body()
-            )
-        }
+        }.bodyAsText()
+            .let { jsonMapper.readTree(it) }
+            .get("data")
+            .get("task_id")
+            .textValue()
+            .let { SangforAsyncTask(taskId = it, extraData = Unit) }
+            .apply { await(client, suspend { getToken().id }) }
 
         if (options.powerOn) {
             powerOnAsync(virtualMachineUUID)
@@ -466,43 +461,40 @@ object SangforClient : IVMClient {
         return Result.success(Unit)
     }
 
-    /*
-    /* The virtual machine must be powered off. */
     override suspend fun convertVMToTemplate(uuid: String): Result<VirtualMachine> {
-        val token = getToken()
-        val vmRes: String = client.get("admin/view/server-info?id=$uuid") {
-            header("Cookie", "aCMPAuthToken=${token.id}")
-        }.body()
-        val vmJSON = jsonMapper.readTree(vmRes)["data"]
-        val oldSetting = OldSetting(
-            vmJSON["name"].toString().split('\"')[1],
-            vmJSON["description"].toString().split('\"')[1],
-            vmJSON["memory_mb"].intValue(),
-            vmJSON["cores"].intValue(),
-            vmJSON["data"]["disks"].map {
-                it["size_mb"].longValue()
-            }.reduce { s, s1 -> s + s1 },
-            vmJSON["networks"][0]["mac"].toString().split('\"')[1].lowercase(),
-            vmJSON["os_type"].toString().split('\"')[1],
-        )
-        val info = vmJSON["description"].toString().split('\"')[1].split(',')
-        var description = "default,true,-1,"
-        if (info.size == 4) description = "${info[0]},true,${info[2]},${info[3]}"
-        initSettings(
-            uuid,
-            oldSetting.name,
-            description,
-            oldSetting.memory,
-            oldSetting.cores,
-            oldSetting.disk,
-            oldSetting
-        )
-        return getVM(uuid)
-    }
-    */
+        val vmRes = client.get("janus/20180725/servers/$uuid") {
+            addAuthorization(getToken().id)
+            configureHeader()
+        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+            .bodyAsText()
+            .let { jsonMapper.readTree(it) }
 
-    override suspend fun convertVMToTemplate(uuid: String): Result<VirtualMachine> {
-        throw NotImplementedError("SangforClient.convertVMToTemplate is not implemented")
+        val description = vmRes["data"]["description"].textValue()
+        val infoArray = description.split(',')
+
+        val newDescription =
+            if (infoArray.size == 4) "${infoArray[0]},true,${infoArray[2]},${infoArray[3]}"
+            else "default,true,-1,"
+
+        val task = client.put("janus/20180725/servers/$uuid") {
+            addAuthorization(getToken().id)
+            configureHeader()
+            setBody("""
+                {
+                    "description": "$newDescription"
+                }
+            """.trimIndent())
+        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+            .bodyAsText()
+            .let { jsonMapper.readTree(it) }
+            .get("data")
+            .get("task_id")
+            .textValue()
+            .let { SangforAsyncTask(taskId = it, extraData = Unit) }
+
+        task.await(client, suspend { getToken().id })
+
+        return getVM(uuid)
     }
 
     suspend fun clone(tokenString: String,
@@ -525,17 +517,10 @@ object SangforClient : IVMClient {
                     }
                 }
             """.trimIndent())
-        }
-
-        if (!response.status.isSuccess()) {
-            throw SangforHttpExcetion(
-                response.status,
-                response.body()
-            )
-        }
+        }.also { SangforHttpExcetion.mustBeSuccess(it) }
 
         val responseJson = jsonMapper.readTree(response.body<String>())
-        return SangforAsyncTask<String>(
+        return SangforAsyncTask(
             taskId = responseJson["data"]["task_id"].textValue(),
             extraData = responseJson["data"]["uuids"].get(0).textValue())
     }
@@ -552,10 +537,6 @@ object SangforClient : IVMClient {
     internal fun HttpRequestBuilder.addAuthorization(tokenProvider : suspend () -> String) {
         addAuthorization(runBlocking { tokenProvider() })
     }
-
-    internal fun HttpRequestBuilder.addAuthorization(tokenProvider : () -> String) {
-        addAuthorization(tokenProvider())
-    }
 }
 
 data class SangforToken(val id: String)
@@ -568,42 +549,38 @@ data class SangforAsyncTask<TData>(val taskId: String, val extraData :TData) {
             val taskQueryResponse = client.get("janus/20180725/tasks/$taskId") {
                 configureHeader()
                 addAuthorization(tokenProvider)
-            }
-
-            if (!taskQueryResponse.status.isSuccess()) {
-                throw SangforHttpExcetion(
-                    taskQueryResponse.status,
-                    taskQueryResponse.body()
-                )
-            }
+            }.also { SangforHttpExcetion.mustBeSuccess(it) }
 
             jsonMapper.readTree(taskQueryResponse.body<String>())["data"]
         }
 
         var taskQueryData: JsonNode = queryTask()
-        if (taskQueryData["status"].textValue() == "finish") {
-            return taskQueryData
+
+        when (taskQueryData["status"].textValue()) {
+            "finish" -> return taskQueryData
+            "failure" -> throw SangforAsyncTaskException(
+                taskId,
+                taskQueryData["description"].textValue()
+            )
         }
 
         waitForDone(timeout = 20000L, interval = 500L) {
             taskQueryData = queryTask()
             val status = taskQueryData["status"].textValue()
+
+            if (status == "failure") {
+                throw SangforAsyncTaskException(
+                    taskId,
+                    taskQueryData["description"].textValue()
+                )
+            }
+
             status == "finish"
         }
 
         return taskQueryData
     }
 }
-
-data class OldSetting(
-    val name: String,
-    val description: String,
-    val memory: Int,
-    val cores: Int,
-    val disk: Long,
-    val mac: String,
-    val osType: String
-)
 
 internal object SangforRSA {
     private fun buildPublicKey(modulusHex: String): RSAPublicKey {

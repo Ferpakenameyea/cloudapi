@@ -1,6 +1,9 @@
 package cn.edu.buaa.scs.vm.sangfor
 
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.isSuccess
 
 class SangforHttpExcetion : Exception {
     val code: HttpStatusCode
@@ -13,5 +16,16 @@ class SangforHttpExcetion : Exception {
 
     fun what(): String{
         return "Sangfor http action returned with code $code, message: $httpMessage"
+    }
+
+    companion object {
+        suspend fun mustBeSuccess(response: HttpResponse) {
+            if (!response.status.isSuccess()) {
+                throw SangforHttpExcetion(
+                    response.status,
+                    response.bodyAsText()
+                )
+            }
+        }
     }
 }
