@@ -23,7 +23,7 @@ object Email {
 
         val properties = Properties().apply {
             put("mail.smtp.auth", "true")
-            put("mail.smtp.starttls.enable", "false")
+            put("mail.smtp.starttls.enable", "true")
             put("mail.smtp.host", globalConfig.email.smtpServer)
             put("mail.smtp.port", globalConfig.email.smtpPort)
         }
