@@ -1,11 +1,14 @@
 package cn.edu.buaa.scs.vm
 
+import cn.edu.buaa.scs.controller.models.Host
 import cn.edu.buaa.scs.model.VirtualMachineExtraInfo
 import cn.edu.buaa.scs.testEnv
+import cn.edu.buaa.scs.utils.fail
 import cn.edu.buaa.scs.vm.sangfor.SangforClient
 import io.ktor.server.testing.withApplication
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import java.util.Collections
 
 /**
  * This test cannot run as batch test
@@ -49,7 +52,11 @@ class SangforClientTest {
     fun testGetHosts() {
         withApplication(testEnv) {
             runBlocking {
-                SangforClient.getHosts()
+                val hostList = SangforClient.getHosts()
+                hostList.fold(
+                    onSuccess = { assert(it.isNotEmpty()) },
+                    onFailure = { assert(false) }
+                )
             }
         }
     }
@@ -58,7 +65,11 @@ class SangforClientTest {
     fun testGetVms() {
         withApplication(testEnv) {
             runBlocking {
-                SangforClient.getAllVMs()
+                val vmList = SangforClient.getAllVMs()
+                vmList.fold(
+                    onSuccess = { assert(it.isNotEmpty()) },
+                    onFailure = { assert(false) }
+                )
             }
         }
     }
@@ -115,7 +126,16 @@ class SangforClientTest {
     fun testConvertToTemplate() {
         withApplication(testEnv) {
             runBlocking {
-                SangforClient.convertVMToTemplate("18f34367-a414-4b56-ac90-e65bfec18173")
+                SangforClient.convertVMToTemplate("55ee7bc1-9f62-456a-bc2d-29c744c96fb5")
+            }
+        }
+    }
+
+    @Test
+    fun testDeleteVM() {
+        withApplication(testEnv) {
+            runBlocking {
+                SangforClient.deleteVM("55ee7bc1-9f62-456a-bc2d-29c744c96fb5")
             }
         }
     }

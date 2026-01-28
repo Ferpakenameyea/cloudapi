@@ -44,17 +44,17 @@ import javax.net.ssl.X509TrustManager
 
 object SangforClient : IVMClient {
 
-    private val username = application.getConfigString("vm.sangfor.username")
-    private val password = application.getConfigString("vm.sangfor.password")
+    internal val username = application.getConfigString("vm.sangfor.username")
+    internal val password = application.getConfigString("vm.sangfor.password")
 
     // admin password is the password of username 'admin'
     // some api needs priority of administrator to continue
-    private val adminPassword = application.getConfigString("vm.sangfor.adminPassword")
+    internal val adminPassword = application.getConfigString("vm.sangfor.adminPassword")
 
     // aCMPAuthToken is for request header
     // Sangfor http api needs header:
     // 'Cookie: aCMPAuthToken=<some string>'
-    private val aCMPAuthToken = UUID.randomUUID().toString()
+    internal val aCMPAuthToken = UUID.randomUUID().toString()
 
     private val tokenLock = Mutex()
     private val createLock = Mutex()
@@ -224,8 +224,8 @@ object SangforClient : IVMClient {
                 overallStatus   = VirtualMachine.OverallStatus.from("green")
                 netInfos        = it["networks"].map { net ->
                     VirtualMachine.NetInfo(
-                        macAddress = net["mac"].textValue(),
-                        ipList = listOf(net["ip"].textValue())
+                        macAddress = net["mac_address"].textValue(),
+                        ipList = listOf(net["ip_address"].textValue())
                     )
                 }
                 applySangforExtraInfo(it["description"].textValue())
@@ -409,6 +409,8 @@ object SangforClient : IVMClient {
             response.status.isSuccess()
         }
 
+        ensurePoweredOff(virtualMachineUUID)
+
         client.put("janus/20180725/servers/$virtualMachineUUID") {
             configureHeader()
             addAuthorization(suspend { getToken().id })
@@ -419,10 +421,9 @@ object SangforClient : IVMClient {
                     "disks": [{
                         "id": "ide0",
                         "type": "new_disk",
-                        "preallocate": "metadata",
+                        "preallocate": "off",
                         "size_mb": ${options.diskSize / 1048576L},
-                        "is_old_disk": 1,
-                        "storage_file": "3600d0231000859694803abfa3b686284:vm-disk-1.qcow2"
+                        "use_virtio": 1
                     }]
                 }
             """.trimIndent())
@@ -441,8 +442,8 @@ object SangforClient : IVMClient {
         return getVM(virtualMachineUUID)
     }
 
-    // TODO: still need testing
     override suspend fun deleteVM(uuid: String): Result<Unit> {
+        ensurePoweredOff(uuid)
         val response = client.delete("/janus/20180725/servers/$uuid") {
             configureHeader()
             addAuthorization(suspend { getToken().id })
@@ -462,6 +463,8 @@ object SangforClient : IVMClient {
     }
 
     override suspend fun convertVMToTemplate(uuid: String): Result<VirtualMachine> {
+        ensurePoweredOff(uuid)
+
         val vmRes = client.get("janus/20180725/servers/$uuid") {
             addAuthorization(getToken().id)
             configureHeader()
@@ -495,6 +498,16 @@ object SangforClient : IVMClient {
         task.await(client, suspend { getToken().id })
 
         return getVM(uuid)
+    }
+
+    private suspend fun ensurePoweredOff(uuid: String) {
+        val vm = getVM(uuid)
+        vm.fold(onSuccess = {
+            if (it.powerState == VirtualMachine.PowerState.PoweredOn)
+            {
+                powerOffSync(it.uuid)
+            }
+        }, onFailure = { throw SangforHttpExcetion(HttpStatusCode.NotFound, "no machine with id $uuid found")})
     }
 
     suspend fun clone(tokenString: String,
