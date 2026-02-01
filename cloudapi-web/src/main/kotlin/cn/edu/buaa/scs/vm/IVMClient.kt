@@ -38,7 +38,7 @@ interface IVMClient {
     suspend fun convertVMToTemplate(uuid: String): Result<VirtualMachine>
 }
 
-fun newVMClient(platform: String): IVMClient {
+fun getVmClient(platform: String): IVMClient {
     return when (platform.lowercase()) {
         "vcenter" -> VCenterClient
         "sangfor" -> SangforClient

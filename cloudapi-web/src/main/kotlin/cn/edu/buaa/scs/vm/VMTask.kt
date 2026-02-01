@@ -1,10 +1,14 @@
 package cn.edu.buaa.scs.vm
 
 import cn.edu.buaa.scs.model.TaskData
+import cn.edu.buaa.scs.model.virtualMachines
+import cn.edu.buaa.scs.storage.mysql
 import cn.edu.buaa.scs.task.Task
 import cn.edu.buaa.scs.utils.jsonMapper
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.module.kotlin.readValue
+import org.ktorm.dsl.eq
+import org.ktorm.entity.find
 
 class VMTask(taskData: TaskData) : Task(taskData) {
 
@@ -33,12 +37,18 @@ class VMTask(taskData: TaskData) : Task(taskData) {
         val content = jsonMapper.readValue<Content>(taskData.data)
         return when (content.type) {
             Type.Create -> {
+                // TODO: this seems to be default on vcenter
                 val options = jsonMapper.readValue<CreateVmOptions>(content.data)
                 vmClient.createVM(options).map { }
             }
 
             Type.Delete -> {
-                vmClient.deleteVM(content.data)
+                val vm = mysql.virtualMachines.find { it.uuid.eq(content.data) }
+                if (vm == null) {
+                    return Result.success(Unit)
+                }
+                val client = getVmClient(vm.platform)
+                client.deleteVM(content.data)
             }
         }
     }

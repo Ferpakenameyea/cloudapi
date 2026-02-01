@@ -22,6 +22,7 @@ import org.ktorm.dsl.eq
 import org.ktorm.entity.find
 import org.ktorm.jackson.KtormModule
 import java.security.cert.X509Certificate
+import java.util.Collections
 import javax.net.ssl.X509TrustManager
 
 object VCenterClient : IVMClient {
@@ -57,7 +58,8 @@ object VCenterClient : IVMClient {
     private fun vmNotFound(uuid: String): NotFoundException = NotFoundException("virtualMachine($uuid) not found")
 
     override suspend fun getHosts(): Result<List<Host>> {
-        TODO("Not yet implemented")
+        // TODO "Not yet implemented"
+        return Result.success(Collections.emptyList());
     }
 
     override suspend fun getAllVMs(): Result<List<VirtualMachine>> = runCatching {

@@ -9,7 +9,7 @@ import cn.edu.buaa.scs.storage.mysql
 import cn.edu.buaa.scs.utils.jsonMapper
 import cn.edu.buaa.scs.utils.jsonReadValue
 import cn.edu.buaa.scs.vm.CreateVmOptions
-import cn.edu.buaa.scs.vm.newVMClient
+import cn.edu.buaa.scs.vm.getVmClient
 import cn.edu.buaa.scs.utils.logger
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
@@ -131,7 +131,7 @@ class VirtualMachineReconciler(val client: KubernetesClient) : Reconciler<Virtua
     ): UpdateControl<VirtualMachine> {
         try {
             val vm = resource ?: return UpdateControl.noUpdate()
-            val vmClient = newVMClient(vm.spec.platform)
+            val vmClient = getVmClient(vm.spec.platform)
             if (vm.spec.deleted) {
                 val exist = runBlocking {
                     try {
@@ -242,7 +242,7 @@ class VirtualMachineReconciler(val client: KubernetesClient) : Reconciler<Virtua
         val vm = resource ?: return DeleteControl.defaultDelete()
         if (vm.status == null) return DeleteControl.defaultDelete()
 
-        val vmClient = newVMClient(vm.spec.platform)
+        val vmClient = getVmClient(vm.spec.platform)
         var exist = false
         runBlocking {
             if (vmClient.getVM(vm.status.uuid).isSuccess) {

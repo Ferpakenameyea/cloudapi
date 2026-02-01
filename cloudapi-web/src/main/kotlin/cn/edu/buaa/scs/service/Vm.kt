@@ -51,7 +51,12 @@ class VmService(val call: ApplicationCall) : IService {
     }
 
     suspend fun getHosts(): List<Host> {
-        return sfClient.getHosts().getOrThrow()
+        val list = mutableListOf<Host>()
+
+        vmClient.getHosts().onSuccess { list.addAll(it) }
+        sfClient.getHosts().onSuccess { list.addAll(it) }
+
+        return list
     }
 
     suspend fun getWebTicket(uuid: String): TicketResponse {
@@ -350,15 +355,16 @@ class VmService(val call: ApplicationCall) : IService {
         if (mysql.virtualMachines.exists { it.isTemplate.eq(true) and it.name.eq(name) }) {
             throw BadRequestException("template name already exists")
         }
+        val client = getVmClient(vm.platform)
         // convert machine into template
-        vm = vmClient.convertVMToTemplate(uuid).getOrThrow()
+        vm = client.convertVMToTemplate(uuid).getOrThrow()
         // config vm template
         val (adminId, teacherId, studentId) = when {
             call.user().isAdmin() -> Triple("default", "default", "default")
             call.user().isTeacher() -> Triple("default", call.userId(), "default")
             else -> Triple("default", "default", call.userId())
         }
-        return vmClient.configVM(
+        return client.configVM(
             vm.uuid,
             adminId = adminId,
             teacherId = teacherId,

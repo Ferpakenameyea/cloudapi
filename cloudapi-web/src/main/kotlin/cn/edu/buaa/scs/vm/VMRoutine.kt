@@ -22,8 +22,10 @@ object VMRoutine : Routine {
 
     private val updateVmCrd = Routine.alwaysDo("vm-worker-update-crd") {
         val vmList = mutableListOf<VirtualMachine>()
-        vmList.addAll(vmClient.getAllVMs().getOrThrow())
-        vmList.addAll(sfClient.getAllVMs().getOrThrow())
+
+        vmClient.getAllVMs().onSuccess { vmList.addAll(it) }
+        sfClient.getAllVMs().onSuccess { vmList.addAll(it) }
+
         vmList.forEach { vmModel ->
             val ns = vmModel.applyId.lowercase()
             ns.ensureNamespace(kubeClient)
@@ -41,8 +43,10 @@ object VMRoutine : Routine {
 
     private val updateVMsToDatabase = Routine.alwaysDo("vm-worker-update-db") {
         val vmList = mutableListOf<VirtualMachine>()
-        vmList.addAll(vmClient.getAllVMs().getOrThrow())
-//        vmList.addAll(sfClient.getAllVMs().getOrThrow())
+
+        vmClient.getAllVMs().onSuccess { vmList.addAll(it) }
+        sfClient.getAllVMs().onSuccess { vmList.addAll(it) }
+
         val existedVmUUIDList = mysql.virtualMachines.map { it.uuid }.toSet()
         mysql.useTransaction {
             // update
@@ -118,9 +122,9 @@ object VMRoutine : Routine {
     private val deleteVm = Routine.alwaysDo("delete-virtual-machine") {
         mysql.virtualMachines.filter { it.lifetime.eq(VirtualMachine.Lifetime.DELETED) }
             .toList()
-            .forEach {
-                val vm = it
-                vmClient.deleteVM(vm.uuid)
+            .forEach { vm ->
+                val client = getVmClient(vm.platform)
+                client.deleteVM(vm.uuid)
                     .onSuccess { vm.delete() }
             }
     }
