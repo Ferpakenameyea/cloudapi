@@ -195,7 +195,7 @@ class VmService(val call: ApplicationCall) : IService {
         vmApply.handleTime = System.currentTimeMillis()
 
         val templateVM = mysql.virtualMachines.find { it.uuid.eq(vmApply.templateUuid) }
-        var platform = "vcenter"
+        var platform = "sangfor"
         templateVM?.let {
             platform = it.platform
         }
