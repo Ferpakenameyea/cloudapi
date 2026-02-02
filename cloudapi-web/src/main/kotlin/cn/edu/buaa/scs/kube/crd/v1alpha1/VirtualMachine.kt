@@ -152,7 +152,8 @@ class VirtualMachineReconciler(val client: KubernetesClient) : Reconciler<Virtua
                 }
             }
 
-            logger("vm-reconcile")().info { "Reconciling VirtualMachine: ${vm.spec.name}" }
+            val log = logger("vm-reconcile")()
+            log.info { "Reconciling VirtualMachine: ${vm.spec.name}" }
 
             if (vm.status == null) {
                 val vmModelResult = runBlocking { vmClient.getVMByName(vm.spec.name, vm.spec.getVmExtraInfo().applyId) }
@@ -169,11 +170,14 @@ class VirtualMachineReconciler(val client: KubernetesClient) : Reconciler<Virtua
                             try {
                                 vmClient.createVM(vm.spec.toCreateVmOptions()).getOrThrow()
                             } catch (e: Throwable) {
+                                log.error("error when trying to create vm, name: {}", vm.spec.name)
+                                log.error("exception", e)
                                 null
                             } finally {
                                 createVmProcessMutex.unlock(vm)
                             }
                         } else {
+                            log.warn("failed to acquire lock")
                             null
                         }
                     }

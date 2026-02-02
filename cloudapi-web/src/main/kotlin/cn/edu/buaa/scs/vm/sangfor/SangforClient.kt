@@ -32,6 +32,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import org.ktorm.jackson.KtormModule
+import org.litote.kmongo.json
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.SecureRandom
@@ -406,7 +407,13 @@ object SangforClient : IVMClient {
                 addAuthorization(suspend { getToken().id })
             }
 
-            response.status.isSuccess()
+            if (!response.status.isSuccess()) {
+                false
+            } else {
+                val json = response.body<String>()
+                val jsonObject = jsonMapper.readTree(json)
+                jsonObject["status"].textValue() == "stopped"
+            }
         }
 
         ensurePoweredOff(virtualMachineUUID)
