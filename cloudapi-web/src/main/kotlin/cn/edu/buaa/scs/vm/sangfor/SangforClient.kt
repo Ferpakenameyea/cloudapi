@@ -444,6 +444,7 @@ object SangforClient : IVMClient {
                     }
                 """.trimIndent())
             }.bodyAsText()
+                .apply { log.info(this) }
                 .let { jsonMapper.readTree(it) }
                 .get("data")
                 .get("task_id")
