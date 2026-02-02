@@ -376,7 +376,9 @@ object SangforClient : IVMClient {
     override suspend fun createVM(options: CreateVmOptions): Result<VirtualMachine> {
         // the lock needs to surround all, else
         // system might create duplications of same vm
-        createLock.lock()
+        if (!createLock.tryLock()) {
+            return Result.failure(Exception("Another thread is already creating"))
+        }
         // Send clone vm request.
         var virtualMachineUUID: String? = null
 
