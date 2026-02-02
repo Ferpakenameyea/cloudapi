@@ -380,9 +380,9 @@ object SangforClient : IVMClient {
             return Result.failure(Exception("Another thread is already creating"))
         }
         // Send clone vm request.
-        var virtualMachineUUID: String? = null
-
+        val virtualMachineUUID: String
         val asyncTask: SangforAsyncTask<String>
+
         try {
             val owner = if (options.extraInfo.teacherId != "default") options.extraInfo.teacherId
             else if (options.extraInfo.studentId != "default") options.extraInfo.studentId
