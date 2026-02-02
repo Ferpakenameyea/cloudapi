@@ -23,6 +23,7 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.serialization.jackson.*
@@ -32,7 +33,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import org.ktorm.jackson.KtormModule
-import org.litote.kmongo.json
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.SecureRandom
@@ -374,8 +374,11 @@ object SangforClient : IVMClient {
     }
 
     override suspend fun createVM(options: CreateVmOptions): Result<VirtualMachine> {
+        // the lock needs to surround all, else
+        // system might create duplications of same vm
         createLock.lock()
         // Send clone vm request.
+        var virtualMachineUUID: String? = null
 
         val asyncTask: SangforAsyncTask<String>
         try {
@@ -389,35 +392,22 @@ object SangforClient : IVMClient {
                 options.extraInfo.templateUuid,
                 description
             )
+            val tokenProvider = suspend { getToken().id }
+            virtualMachineUUID = asyncTask.extraData
+
+            asyncTask.await(client, tokenProvider)
+
+            // wait for vm to exist
+            waitForDone(timeout = 60000L * 5, interval = 5000L) {
+                isVmExistAndConfigurable(virtualMachineUUID)
+            }
         } finally {
             // put unlock to 'finally' block so that when it fails
             // due to exception the lock will release
             createLock.unlock()
         }
 
-        val tokenProvider = suspend { getToken().id }
-        val virtualMachineUUID = asyncTask.extraData
-
-        asyncTask.await(client, tokenProvider)
-
-        // wait for vm to exist
-        waitForDone(timeout = 60000L * 5, interval = 5000L) {
-            val response = client.get("janus/20180725/servers/$virtualMachineUUID") {
-                configureHeader()
-                addAuthorization(suspend { getToken().id })
-            }
-
-            if (!response.status.isSuccess()) {
-                false
-            } else {
-                val json = response.body<String>()
-                val jsonObject = jsonMapper.readTree(json)
-                jsonObject["status"].textValue() == "stopped"
-            }
-        }
-
         ensurePoweredOff(virtualMachineUUID)
-
         client.put("janus/20180725/servers/$virtualMachineUUID") {
             configureHeader()
             addAuthorization(suspend { getToken().id })
@@ -447,6 +437,21 @@ object SangforClient : IVMClient {
         }
 
         return getVM(virtualMachineUUID)
+    }
+
+    private suspend fun isVmExistAndConfigurable(virtualMachineUUID: String): Boolean {
+        val response = client.get("janus/20180725/servers/$virtualMachineUUID") {
+            configureHeader()
+            addAuthorization(suspend { getToken().id })
+        }
+
+        return if (!response.status.isSuccess()) {
+            false
+        } else {
+            val json = response.body<String>()
+            val jsonObject = jsonMapper.readTree(json)
+            return jsonObject["status"].textValue() == "stopped"
+        }
     }
 
     override suspend fun deleteVM(uuid: String): Result<Unit> {
