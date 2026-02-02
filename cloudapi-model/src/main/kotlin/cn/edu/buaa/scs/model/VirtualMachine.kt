@@ -44,7 +44,7 @@ fun VirtualMachine.applySangforExtraInfo(extraInfo: String) {
         this.isTemplate = info[1].toBoolean()
         this.isExperimental = info[2].toInt() != 0
         this.experimentId = info[2].toInt()
-        this.applyId = info[3]
+        this.applyId = info[3].ifEmpty { "default" }
     } else {
         this.adminId = "default"
         this.studentId = "default"

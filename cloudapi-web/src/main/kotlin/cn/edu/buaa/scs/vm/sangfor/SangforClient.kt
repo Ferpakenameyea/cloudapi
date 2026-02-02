@@ -477,7 +477,7 @@ object SangforClient : IVMClient {
 
         val newDescription =
             if (infoArray.size == 4) "${infoArray[0]},true,${infoArray[2]},${infoArray[3]}"
-            else "default,true,-1,"
+            else "default,true,-1,default"
 
         val task = client.put("janus/20180725/servers/$uuid") {
             addAuthorization(getToken().id)
