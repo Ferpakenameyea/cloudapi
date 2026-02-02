@@ -153,7 +153,7 @@ class VirtualMachineReconciler(val client: KubernetesClient) : Reconciler<Virtua
             }
 
             val log = logger("vm-reconcile")()
-            log.info { "Reconciling VirtualMachine: ${vm.spec.name}" }
+//            log.info { "Reconciling VirtualMachine: ${vm.spec.name}" }
 
             if (vm.status == null) {
                 val vmModelResult = runBlocking { vmClient.getVMByName(vm.spec.name, vm.spec.getVmExtraInfo().applyId) }
