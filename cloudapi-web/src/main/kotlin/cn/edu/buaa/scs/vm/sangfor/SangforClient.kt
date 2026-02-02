@@ -32,6 +32,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withTimeout
 import org.ktorm.jackson.KtormModule
 import java.math.BigInteger
 import java.security.KeyFactory
@@ -69,6 +70,14 @@ object SangforClient : IVMClient {
                 jackson {
                     registerModule(KtormModule())
                 }
+            }
+            install(HttpTimeout) {
+                requestTimeoutMillis = 30_000
+                connectTimeoutMillis = 10_000
+                socketTimeoutMillis = 20_000
+            }
+            install(HttpRequestRetry) {
+                maxRetries = 10
             }
             engine {
                 https {
