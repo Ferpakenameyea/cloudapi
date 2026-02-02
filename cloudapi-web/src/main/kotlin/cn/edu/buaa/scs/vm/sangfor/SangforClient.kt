@@ -410,26 +410,34 @@ object SangforClient : IVMClient {
         }
 
         ensurePoweredOff(virtualMachineUUID)
-        client.put("janus/20180725/servers/$virtualMachineUUID") {
-            configureHeader()
-            addAuthorization(suspend { getToken().id })
-            setBody("""
-                {
-                    "memory_mb": ${options.memory},
-                    "cores": ${options.cpu},
-                    "disks": [{
-                        "id": "ide0",
-                        "type": "new_disk",
-                        "preallocate": "off",
-                        "size_mb": ${options.diskSize / 1048576L},
-                        "use_virtio": 1
-                    }]
-                }
-            """.trimIndent())
-        }.bodyAsText()
-            .let { jsonMapper.readTree(it) }
-            .get("data")
-            .get("task_id")
+
+        var taskIdNode: JsonNode? = null
+
+        waitForDone(timeout = 60000L * 5, interval = 5000L) {
+            taskIdNode = client.put("janus/20180725/servers/$virtualMachineUUID") {
+                configureHeader()
+                addAuthorization(suspend { getToken().id })
+                setBody("""
+                    {
+                        "memory_mb": ${options.memory},
+                        "cores": ${options.cpu},
+                        "disks": [{
+                            "id": "ide0",
+                            "type": "new_disk",
+                            "preallocate": "off",
+                            "size_mb": ${options.diskSize / 1048576L},
+                            "use_virtio": 1
+                        }]
+                    }
+                """.trimIndent())
+            }.bodyAsText()
+                .let { jsonMapper.readTree(it) }
+                .get("data")
+                .get("task_id")
+            taskIdNode != null
+        }
+
+        taskIdNode!!
             .textValue()
             .let { SangforAsyncTask(taskId = it, extraData = Unit) }
             .apply { await(client, suspend { getToken().id }) }
