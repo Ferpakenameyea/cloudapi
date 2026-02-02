@@ -396,19 +396,17 @@ object SangforClient : IVMClient {
             )
             val tokenProvider = suspend { getToken().id }
             virtualMachineUUID = asyncTask.extraData
-
             asyncTask.await(client, tokenProvider)
-
-            // wait for vm to exist
-            waitForDone(timeout = 60000L * 5, interval = 5000L) {
-                isVmExistAndConfigurable(virtualMachineUUID)
-            }
         } finally {
             // put unlock to 'finally' block so that when it fails
             // due to exception the lock will release
             createLock.unlock()
         }
 
+        // wait for vm to exist
+        waitForDone(timeout = 60000L * 5, interval = 5000L) {
+            isVmExistAndConfigurable(virtualMachineUUID)
+        }
         ensurePoweredOff(virtualMachineUUID)
 
         var taskIdNode: JsonNode? = null
