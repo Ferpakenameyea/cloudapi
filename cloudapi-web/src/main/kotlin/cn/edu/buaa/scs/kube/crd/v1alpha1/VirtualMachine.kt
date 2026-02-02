@@ -166,6 +166,9 @@ class VirtualMachineReconciler(val client: KubernetesClient) : Reconciler<Virtua
                         return UpdateControl.noUpdate<VirtualMachine>().rescheduleAfter(10000L)
                     }
                     val vmModel = runBlocking {
+                        log.info("vm {} doesn't exist, trying to create from thread {}",
+                            vm.spec.name,
+                            Thread.currentThread().name)
                         if (createVmProcessMutex.tryLock(vm)) {
                             try {
                                 vmClient.createVM(vm.spec.toCreateVmOptions()).getOrThrow()
