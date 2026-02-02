@@ -10,6 +10,7 @@ import cn.edu.buaa.scs.model.applySangforExtraInfo
 import cn.edu.buaa.scs.utils.getConfigString
 import cn.edu.buaa.scs.utils.getValueByKey
 import cn.edu.buaa.scs.utils.jsonMapper
+import cn.edu.buaa.scs.utils.logger
 import cn.edu.buaa.scs.utils.schedule.waitForDone
 import cn.edu.buaa.scs.utils.setExpireKey
 import cn.edu.buaa.scs.vm.CreateVmOptions
@@ -383,6 +384,7 @@ object SangforClient : IVMClient {
     }
 
     override suspend fun createVM(options: CreateVmOptions): Result<VirtualMachine> {
+        val log = logger("sangfor-vm-create")()
         // the lock needs to surround all, else
         // system might create duplications of same vm
         if (!createLock.tryLock()) {
@@ -397,6 +399,7 @@ object SangforClient : IVMClient {
             else if (options.extraInfo.studentId != "default") options.extraInfo.studentId
             else "default"
             val description = "$owner,false,${options.extraInfo.experimentId},${options.extraInfo.applyId}"
+            log.info("cloning template")
             asyncTask = clone(
                 getToken().id,
                 options.name,
@@ -406,17 +409,20 @@ object SangforClient : IVMClient {
             val tokenProvider = suspend { getToken().id }
             virtualMachineUUID = asyncTask.extraData
             asyncTask.await(client, tokenProvider)
+            log.info("template cloned")
         } finally {
             // put unlock to 'finally' block so that when it fails
             // due to exception the lock will release
             createLock.unlock()
         }
 
+        log.info("waiting for vm to exist and be configurable")
         // wait for vm to exist
         waitForDone(timeout = 60000L * 5, interval = 5000L) {
             isVmExistAndConfigurable(virtualMachineUUID)
         }
         ensurePoweredOff(virtualMachineUUID)
+        log.info("vm ready, configuring vm")
 
         var taskIdNode: JsonNode? = null
 
@@ -443,15 +449,20 @@ object SangforClient : IVMClient {
                 .get("task_id")
             taskIdNode != null
         }
+        log.info("vm configured, waiting for task done")
 
         taskIdNode!!
             .textValue()
             .let { SangforAsyncTask(taskId = it, extraData = Unit) }
             .apply { await(client, suspend { getToken().id }) }
 
+        log.info("vm configure success")
+
         if (options.powerOn) {
             powerOnAsync(virtualMachineUUID)
         }
+
+        log.info("done")
 
         return getVM(virtualMachineUUID)
     }
