@@ -11,6 +11,7 @@ import cn.edu.buaa.scs.utils.getConfigString
 import cn.edu.buaa.scs.utils.getValueByKey
 import cn.edu.buaa.scs.utils.jsonMapper
 import cn.edu.buaa.scs.utils.logger
+import cn.edu.buaa.scs.utils.schedule.retry
 import cn.edu.buaa.scs.utils.schedule.waitForDone
 import cn.edu.buaa.scs.utils.setExpireKey
 import cn.edu.buaa.scs.vm.CreateVmOptions
@@ -426,30 +427,36 @@ object SangforClient : IVMClient {
 
         var taskIdNode: JsonNode? = null
 
-        waitForDone(timeout = 60000L * 5, interval = 5000L) {
-            taskIdNode = client.put("janus/20180725/servers/$virtualMachineUUID") {
-                configureHeader()
-                addAuthorization(suspend { getToken().id })
-                setBody("""
-                    {
-                        "memory_mb": ${options.memory},
-                        "cores": ${options.cpu},
-                        "disks": [{
-                            "id": "ide0",
-                            "type": "new_disk",
-                            "preallocate": "off",
-                            "size_mb": ${options.diskSize / 1048576L},
-                            "use_virtio": 1
-                        }]
-                    }
-                """.trimIndent())
-            }.bodyAsText()
-                .apply { log.info(this) }
-                .let { jsonMapper.readTree(it) }
-                .get("data")
-                .get("task_id")
-            taskIdNode != null
+        retry(5) {
+            waitForDone(timeout = 60000L * 5, interval = 5000L) {
+                taskIdNode = client.put("janus/20210725/servers/$virtualMachineUUID") {
+                    configureHeader()
+                    addAuthorization(suspend { getToken().id })
+                    setBody("""
+                        {
+                            "memory_mb": ${options.memory},
+                            "cores": ${options.cpu},
+                            "disks": [{
+                                "id": "ide0",
+                                "type": "new_disk",
+                                "preallocate": "metadata",
+                                "size_mb": ${options.diskSize / 1048576L},
+                                "is_old_disk": 0,
+                                "storage_file": "3600d0231000859694803abfa3b686284:vm-disk-1.qcow2",
+                                "use_virtio": 1,
+                                "discard": 0
+                            }]
+                        }
+                    """.trimIndent())
+                }.bodyAsText()
+                    .apply { log.info(this) }
+                    .let { jsonMapper.readTree(it) }
+                    .get("data")
+                    .get("task_id")
+                taskIdNode != null
+            }.getOrThrow()
         }
+
         log.info("vm configured, waiting for task done")
 
         taskIdNode!!
@@ -599,6 +606,8 @@ data class SangforAsyncTask<TData>(val taskId: String, val extraData :TData) {
         client: HttpClient,
         tokenProvider: suspend () -> String): JsonNode {
 
+        val log = logger("sangfor-task")()
+
         val queryTask = suspend {
             val taskQueryResponse = client.get("janus/20180725/tasks/$taskId") {
                 configureHeader()
@@ -609,7 +618,7 @@ data class SangforAsyncTask<TData>(val taskId: String, val extraData :TData) {
         }
 
         var taskQueryData: JsonNode = queryTask()
-
+        log.info(taskQueryData.toPrettyString())
         when (taskQueryData["status"].textValue()) {
             "finish" -> return taskQueryData
             "failure" -> throw SangforAsyncTaskException(
@@ -618,10 +627,10 @@ data class SangforAsyncTask<TData>(val taskId: String, val extraData :TData) {
             )
         }
 
-        waitForDone(timeout = 20000L, interval = 500L) {
+        waitForDone(timeout = 60000L * 60, interval = 500L) {
             taskQueryData = queryTask()
             val status = taskQueryData["status"].textValue()
-
+            log.info(taskQueryData.toPrettyString())
             if (status == "failure") {
                 throw SangforAsyncTaskException(
                     taskId,
@@ -630,7 +639,7 @@ data class SangforAsyncTask<TData>(val taskId: String, val extraData :TData) {
             }
 
             status == "finish"
-        }
+        }.getOrThrow()
 
         return taskQueryData
     }

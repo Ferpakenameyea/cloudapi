@@ -106,11 +106,11 @@ class SangforClientTest {
         withApplication(testEnv) {
             val options = CreateVmOptions(
                 name = "test-please-delete",
-                memory = 2048,
-                powerOn = true,
+                memory = 4096,
+                powerOn = false,
                 disNum = 1,
-                cpu = 1,
-                diskSize = 4L * 1024L * 1024L * 1024L, // 4GB
+                cpu = 2,
+                diskSize = 40L * 1024L * 1024L * 1024L, // 40GB
                 extraInfo = VirtualMachineExtraInfo(templateUuid = "7f8aefb0-2044-4814-adac-1abbc85ac607")
             )
 
