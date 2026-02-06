@@ -12,14 +12,20 @@ import cn.edu.buaa.scs.task.Routine
 import cn.edu.buaa.scs.task.RoutineTask
 import cn.edu.buaa.scs.task.Task
 import cn.edu.buaa.scs.utils.ensureNamespace
+import cn.edu.buaa.scs.utils.logger
+import cn.edu.buaa.scs.vm.sangfor.ConcurrentException
+import io.fabric8.kubernetes.api.model.StatusDetails
 import kotlinx.coroutines.delay
 import org.ktorm.dsl.*
 import org.ktorm.entity.count
 import org.ktorm.entity.filter
 import org.ktorm.entity.map
 import org.ktorm.entity.toList
+import java.util.Collections
 
 object VMRoutine : Routine {
+
+    private val log = logger("vm-routine")()
 
     private val updateVmCrd = Routine.alwaysDo("vm-worker-update-crd") {
         val vmList = mutableListOf<VirtualMachine>()
@@ -45,8 +51,16 @@ object VMRoutine : Routine {
     private val updateVMsToDatabase = Routine.alwaysDo("vm-worker-update-db") {
         val vmList = mutableListOf<VirtualMachine>()
 
-        vmClient.getAllVMs().onSuccess { vmList.addAll(it) }
-        sfClient.getAllVMs().onSuccess { vmList.addAll(it) }
+        try {
+            vmClient.getAllVMs()
+                .getOrThrow()
+                .apply { vmList.addAll(this) }
+            sfClient.getAllVMs()
+                .getOrThrow()
+                .apply { vmList.addAll(this) }
+        } catch (e: Throwable) {
+            log.warn("failed to update db, this might be a concurrent conflict: {}", e.message)
+        }
 
         if (vmList.isEmpty()) {
             mysql.deleteAll(VirtualMachines)
@@ -135,7 +149,20 @@ object VMRoutine : Routine {
             .forEach { vm ->
                 val client = getVmClient(vm.platform)
                 client.deleteVM(vm.uuid)
-                    .onSuccess { vm.delete() }
+                    .onSuccess {
+                        vm.delete()
+                        val namespace = vm.applyId
+                        vmKubeClient.inNamespace(namespace)
+                            .list()
+                            .items.find { it.spec.name == vm.name }
+                            .run {
+                                if (this == null) {
+                                    log.warn("{} not found in kubernetes", vm.name)
+                                    return@run
+                                }
+                                vmKubeClient.resource(this).delete()
+                            }
+                    }
             }
     }
 
