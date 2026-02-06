@@ -51,18 +51,12 @@ object VMRoutine : Routine {
     private val updateVMsToDatabase = Routine.alwaysDo("vm-worker-update-db") {
         val vmList = mutableListOf<VirtualMachine>()
 
-        try {
-            vmClient.getAllVMs()
-                .getOrThrow()
-                .apply { vmList.addAll(this) }
-            sfClient.getAllVMs()
-                .getOrThrow()
-                .apply { vmList.addAll(this) }
-        } catch (e: Throwable) {
-            log.warn("failed to update db, this might be a concurrent conflict: {}", e.message)
-            delay(10000L)
-            return@alwaysDo
-        }
+        vmClient.getAllVMs()
+            .getOrThrow()
+            .apply { vmList.addAll(this) }
+        sfClient.getAllVMs()
+            .getOrThrow()
+            .apply { vmList.addAll(this) }
 
         if (vmList.isEmpty()) {
             mysql.deleteAll(VirtualMachines)

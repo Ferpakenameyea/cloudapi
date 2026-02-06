@@ -34,6 +34,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import org.ktorm.jackson.KtormModule
 import java.math.BigInteger
@@ -213,11 +214,7 @@ object SangforClient : IVMClient {
     }
 
     override suspend fun getAllVMs(): Result<List<VirtualMachine>> {
-        try {
-            if (!createLock.tryLock()) {
-                return Result.failure(ConcurrentException("vm is creating, no access to the list"))
-            }
-
+        createLock.withLock {
             val token = getToken().id
             val vmsRes = client.get("janus/20180725/servers") {
                 configureHeader()
@@ -248,10 +245,7 @@ object SangforClient : IVMClient {
                 applySangforExtraInfo(it["description"].textValue())
                 }
             }
-
             return Result.success(list)
-        } finally {
-            createLock.unlock()
         }
     }
 
@@ -397,7 +391,7 @@ object SangforClient : IVMClient {
         // the lock needs to surround all, else
         // system might create duplications of same vm
         if (!createLock.tryLock()) {
-            return Result.failure(Exception("Another thread is already creating"))
+            return Result.failure(Exception("Another thread is already creating or is reading by another thread"))
         }
         // Send clone vm request.
         val virtualMachineUUID: String
