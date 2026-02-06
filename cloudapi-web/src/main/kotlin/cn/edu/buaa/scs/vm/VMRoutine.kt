@@ -60,6 +60,8 @@ object VMRoutine : Routine {
                 .apply { vmList.addAll(this) }
         } catch (e: Throwable) {
             log.warn("failed to update db, this might be a concurrent conflict: {}", e.message)
+            delay(10000L)
+            return@alwaysDo
         }
 
         if (vmList.isEmpty()) {
