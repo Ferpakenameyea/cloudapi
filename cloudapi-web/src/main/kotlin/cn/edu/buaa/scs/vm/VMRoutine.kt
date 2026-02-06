@@ -143,20 +143,7 @@ object VMRoutine : Routine {
             .forEach { vm ->
                 val client = getVmClient(vm.platform)
                 client.deleteVM(vm.uuid)
-                    .onSuccess {
-                        vm.delete()
-                        val namespace = vm.applyId
-                        vmKubeClient.inNamespace(namespace)
-                            .list()
-                            .items.find { it.spec.name == vm.name }
-                            .run {
-                                if (this == null) {
-                                    log.warn("{} not found in kubernetes", vm.name)
-                                    return@run
-                                }
-                                vmKubeClient.resource(this).delete()
-                            }
-                    }
+                    .onSuccess { vm.delete() }
             }
     }
 
