@@ -52,11 +52,9 @@ object VMRoutine : Routine {
         val vmList = mutableListOf<VirtualMachine>()
 
         vmClient.getAllVMs()
-            .getOrThrow()
-            .apply { vmList.addAll(this) }
+            .onSuccess { vmList.addAll(it) }
         sfClient.getAllVMs()
-            .getOrThrow()
-            .apply { vmList.addAll(this) }
+            .onSuccess { vmList.addAll(it) }
 
         if (vmList.isEmpty()) {
             mysql.deleteAll(VirtualMachines)
