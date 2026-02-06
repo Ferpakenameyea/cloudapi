@@ -48,73 +48,77 @@ object VMRoutine : Routine {
         vmClient.getAllVMs().onSuccess { vmList.addAll(it) }
         sfClient.getAllVMs().onSuccess { vmList.addAll(it) }
 
-        val existedVmUUIDList = mysql.virtualMachines.map { it.uuid }.toSet()
+        if (vmList.isEmpty()) {
+            mysql.deleteAll(VirtualMachines)
+        } else {
+            val existedVmUUIDList = mysql.virtualMachines.map { it.uuid }.toSet()
 
-        val count = mysql.virtualMachines.count()
+            val count = mysql.virtualMachines.count()
 
-        mysql.useTransaction {
-            // update
-            mysql.batchUpdate(VirtualMachines) {
-                vmList.filter { it.uuid in existedVmUUIDList }.forEach { vm ->
-                    item {
-                        set(it.platform, vm.platform)
-                        set(it.name, vm.name)
-                        set(it.isTemplate, vm.isTemplate)
-                        set(it.host, vm.host)
-                        set(it.adminId, vm.adminId)
-                        set(it.studentId, vm.studentId)
-                        set(it.teacherId, vm.teacherId)
-                        set(it.experimentId, vm.experimentId)
-                        set(it.isExperimental, vm.isExperimental)
-                        set(it.applyId, vm.applyId)
-                        set(it.memory, vm.memory)
-                        set(it.cpu, vm.cpu)
-                        set(it.osFullName, vm.osFullName)
-                        set(it.diskNum, vm.diskNum)
-                        set(it.diskSize, vm.diskSize)
-                        set(it.powerState, vm.powerState)
-                        set(it.overallStatus, vm.overallStatus)
-                        set(it.netInfos, vm.netInfos)
-                        where { it.uuid eq vm.uuid }
+            mysql.useTransaction {
+                // update
+                mysql.batchUpdate(VirtualMachines) {
+                    vmList.filter { it.uuid in existedVmUUIDList }.forEach { vm ->
+                        item {
+                            set(it.platform, vm.platform)
+                            set(it.name, vm.name)
+                            set(it.isTemplate, vm.isTemplate)
+                            set(it.host, vm.host)
+                            set(it.adminId, vm.adminId)
+                            set(it.studentId, vm.studentId)
+                            set(it.teacherId, vm.teacherId)
+                            set(it.experimentId, vm.experimentId)
+                            set(it.isExperimental, vm.isExperimental)
+                            set(it.applyId, vm.applyId)
+                            set(it.memory, vm.memory)
+                            set(it.cpu, vm.cpu)
+                            set(it.osFullName, vm.osFullName)
+                            set(it.diskNum, vm.diskNum)
+                            set(it.diskSize, vm.diskSize)
+                            set(it.powerState, vm.powerState)
+                            set(it.overallStatus, vm.overallStatus)
+                            set(it.netInfos, vm.netInfos)
+                            where { it.uuid eq vm.uuid }
+                        }
+                    }
+                }
+
+                // create
+                mysql.batchInsert(VirtualMachines) {
+                    vmList.filterNot { it.uuid in existedVmUUIDList }.forEach { vm ->
+                        item {
+                            set(it.uuid, vm.uuid)
+                            set(it.platform, vm.platform)
+                            set(it.name, vm.name)
+                            set(it.isTemplate, vm.isTemplate)
+                            set(it.host, vm.host)
+                            set(it.adminId, vm.adminId)
+                            set(it.studentId, vm.studentId)
+                            set(it.teacherId, vm.teacherId)
+                            set(it.experimentId, vm.experimentId)
+                            set(it.isExperimental, vm.isExperimental)
+                            set(it.applyId, vm.applyId)
+                            set(it.memory, vm.memory)
+                            set(it.cpu, vm.cpu)
+                            set(it.osFullName, vm.osFullName)
+                            set(it.diskNum, vm.diskNum)
+                            set(it.diskSize, vm.diskSize)
+                            set(it.powerState, vm.powerState)
+                            set(it.overallStatus, vm.overallStatus)
+                            set(it.netInfos, vm.netInfos)
+                        }
+                    }
+                }
+
+                if (count != 0) {
+                    // 删除数据库中不应该存在的虚拟机
+                    mysql.delete(VirtualMachines) {
+                        it.uuid.notInList(vmList.map { vm -> vm.uuid })
                     }
                 }
             }
-
-            // create
-            mysql.batchInsert(VirtualMachines) {
-                vmList.filterNot { it.uuid in existedVmUUIDList }.forEach { vm ->
-                    item {
-                        set(it.uuid, vm.uuid)
-                        set(it.platform, vm.platform)
-                        set(it.name, vm.name)
-                        set(it.isTemplate, vm.isTemplate)
-                        set(it.host, vm.host)
-                        set(it.adminId, vm.adminId)
-                        set(it.studentId, vm.studentId)
-                        set(it.teacherId, vm.teacherId)
-                        set(it.experimentId, vm.experimentId)
-                        set(it.isExperimental, vm.isExperimental)
-                        set(it.applyId, vm.applyId)
-                        set(it.memory, vm.memory)
-                        set(it.cpu, vm.cpu)
-                        set(it.osFullName, vm.osFullName)
-                        set(it.diskNum, vm.diskNum)
-                        set(it.diskSize, vm.diskSize)
-                        set(it.powerState, vm.powerState)
-                        set(it.overallStatus, vm.overallStatus)
-                        set(it.netInfos, vm.netInfos)
-                    }
-                }
-            }
-
-            if (count != 0) {
-                // 删除数据库中不应该存在的虚拟机
-                mysql.delete(VirtualMachines) {
-                    it.uuid.notInList(vmList.map { vm -> vm.uuid })
-                }
-            }
+            delay(4000L)
         }
-        delay(4000L)
     }
 
     private val createVm = Routine.alwaysDo("create-virtual-machine") {
