@@ -213,10 +213,11 @@ object SangforClient : IVMClient {
     }
 
     override suspend fun getAllVMs(): Result<List<VirtualMachine>> {
-        if (!createLock.tryLock()) {
-            return Result.failure(ConcurrentException("vm is creating, no access to the list"))
-        }
         try {
+            if (!createLock.tryLock()) {
+                return Result.failure(ConcurrentException("vm is creating, no access to the list"))
+            }
+
             val token = getToken().id
             val vmsRes = client.get("janus/20180725/servers") {
                 configureHeader()
