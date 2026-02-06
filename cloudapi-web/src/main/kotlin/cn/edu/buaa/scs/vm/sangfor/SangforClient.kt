@@ -216,42 +216,42 @@ object SangforClient : IVMClient {
         if (!createLock.tryLock()) {
             return Result.failure(ConcurrentException("vm is creating, no access to the list"))
         }
-	try {
-		val token = getToken().id
-		val vmsRes = client.get("janus/20180725/servers") {
-		    configureHeader()
-		    addAuthorization(token)
-		}.body<String>()
+        try {
+            val token = getToken().id
+            val vmsRes = client.get("janus/20180725/servers") {
+                configureHeader()
+                addAuthorization(token)
+            }.body<String>()
 
-		val vmsJsonArray = jsonMapper.readTree(vmsRes)["data"]["data"]
+            val vmsJsonArray = jsonMapper.readTree(vmsRes)["data"]["data"]
 
-		val list = vmsJsonArray.map{
-		    VirtualMachine().apply {
-			uuid            = it["id"].textValue()
-			platform        = "sangfor"
-			name            = it["name"].textValue()
-			host            = it["host_name"].textValue()
-			memory          = it["memory_mb"].intValue()
-			cpu             = it["cores"].intValue()
-			osFullName      = it["os_name"].textValue()
-			diskNum         = it["disks"].size()
-			diskSize        = it["disks"].sumOf { disk -> disk["size_mb"].longValue() } * 1048576L
-			powerState      = VirtualMachine.PowerState.from(if (it["power_state"].textValue() == "on") "poweredon" else "poweredoff")
-			overallStatus   = VirtualMachine.OverallStatus.from("green")
-			netInfos        = it["networks"].map { net ->
-			    VirtualMachine.NetInfo(
-				macAddress = net["mac_address"].textValue(),
-				ipList = listOf(net["ip_address"].textValue())
-			    )
-			}
-			applySangforExtraInfo(it["description"].textValue())
-		    }
-		}
+            val list = vmsJsonArray.map{
+                VirtualMachine().apply {
+                uuid            = it["id"].textValue()
+                platform        = "sangfor"
+                name            = it["name"].textValue()
+                host            = it["host_name"].textValue()
+                memory          = it["memory_mb"].intValue()
+                cpu             = it["cores"].intValue()
+                osFullName      = it["os_name"].textValue()
+                diskNum         = it["disks"].size()
+                diskSize        = it["disks"].sumOf { disk -> disk["size_mb"].longValue() } * 1048576L
+                powerState      = VirtualMachine.PowerState.from(if (it["power_state"].textValue() == "on") "poweredon" else "poweredoff")
+                overallStatus   = VirtualMachine.OverallStatus.from("green")
+                netInfos        = it["networks"].map { net ->
+                    VirtualMachine.NetInfo(
+                    macAddress = net["mac_address"].textValue(),
+                    ipList = listOf(net["ip_address"].textValue())
+                    )
+                }
+                applySangforExtraInfo(it["description"].textValue())
+                }
+            }
 
-		return Result.success(list)
-	} finally {
-		createLock.unlock()
-	}
+            return Result.success(list)
+        } finally {
+            createLock.unlock()
+        }
     }
 
     override suspend fun getVM(uuid: String): Result<VirtualMachine> = runCatching {
