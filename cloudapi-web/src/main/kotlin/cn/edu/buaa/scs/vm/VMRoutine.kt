@@ -14,6 +14,7 @@ import cn.edu.buaa.scs.task.Task
 import cn.edu.buaa.scs.utils.ensureNamespace
 import kotlinx.coroutines.delay
 import org.ktorm.dsl.*
+import org.ktorm.entity.count
 import org.ktorm.entity.filter
 import org.ktorm.entity.map
 import org.ktorm.entity.toList
@@ -48,6 +49,9 @@ object VMRoutine : Routine {
         sfClient.getAllVMs().onSuccess { vmList.addAll(it) }
 
         val existedVmUUIDList = mysql.virtualMachines.map { it.uuid }.toSet()
+
+        val count = mysql.virtualMachines.count()
+
         mysql.useTransaction {
             // update
             mysql.batchUpdate(VirtualMachines) {
@@ -103,9 +107,11 @@ object VMRoutine : Routine {
                 }
             }
 
-            // 删除数据库中不应该存在的虚拟机
-            mysql.delete(VirtualMachines) {
-                it.uuid.notInList(vmList.map { vm -> vm.uuid })
+            if (count != 0) {
+                // 删除数据库中不应该存在的虚拟机
+                mysql.delete(VirtualMachines) {
+                    it.uuid.notInList(vmList.map { vm -> vm.uuid })
+                }
             }
         }
         delay(4000L)
