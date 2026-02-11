@@ -13,9 +13,7 @@ import org.ktorm.jackson.KtormModule
 
 lateinit var businessKubeClientBuilder: () -> KubernetesClient
 
-val kubeClient: KubernetesClient by lazy {
-    businessKubeClientBuilder()
-}
+val kubeClient: KubernetesClient by lazy { KubernetesClientBuilder().build() }
 
 @Suppress("unused")
 fun Application.kubeModule() {
