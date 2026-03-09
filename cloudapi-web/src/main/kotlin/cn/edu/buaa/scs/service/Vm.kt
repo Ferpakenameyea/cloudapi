@@ -110,7 +110,19 @@ class VmService(val call: ApplicationCall) : IService {
         if (!call.user().isAdmin()) {
             throw AuthorizationException()
         }
-        return vmKubeClient.inAnyNamespace().list().items.filterNot { it.spec.deleted }
+        val items = vmKubeClient.inAnyNamespace().list().items
+        val logger = logger("vm")()
+        items.map {
+            """
+            {
+                "id": "${it.status.uuid}"
+                "name": "${it.spec.name}"
+                "deleted": "${it.spec.deleted}"
+            }
+            """.trimIndent()
+        }.forEach { logger.info(it) }
+
+        return items.filter { !it.spec.deleted }
     }
 
     fun getVmApplyList(expId: Int?): List<VmApply> {
