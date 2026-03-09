@@ -105,13 +105,13 @@ class SangforClientTest {
     fun testCreateVm() {
         withApplication(testEnv) {
             val options = CreateVmOptions(
-                name = "test-please-delete",
+                name = "test-please-delete-after-fix-2",
                 memory = 4096,
                 powerOn = false,
                 disNum = 1,
                 cpu = 2,
-                diskSize = 40L * 1024L * 1024L * 1024L, // 40GB
-                extraInfo = VirtualMachineExtraInfo(templateUuid = "7f8aefb0-2044-4814-adac-1abbc85ac607")
+                diskSize = 120L * 1024L * 1024L * 1024L, // 120GB
+                extraInfo = VirtualMachineExtraInfo(templateUuid = "09e88d7f-de25-4658-b23a-fac514cf5cce")
             )
 
             runBlocking {

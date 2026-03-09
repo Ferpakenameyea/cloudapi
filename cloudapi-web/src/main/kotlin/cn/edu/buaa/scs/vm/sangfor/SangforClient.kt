@@ -2,6 +2,7 @@ package cn.edu.buaa.scs.vm.sangfor
 
 import cn.edu.buaa.scs.application
 import cn.edu.buaa.scs.cache.authRedis
+import cn.edu.buaa.scs.controller.models.Image
 
 import cn.edu.buaa.scs.error.NotFoundException
 import cn.edu.buaa.scs.model.Host
@@ -25,7 +26,6 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
-import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.serialization.jackson.*
@@ -35,7 +35,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeout
 import org.ktorm.jackson.KtormModule
 import java.math.BigInteger
 import java.security.KeyFactory
@@ -295,7 +294,7 @@ object SangforClient : IVMClient {
                     }
                 }
             """.trimIndent())
-        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+        }.also { SangforHttpException.mustBeSuccess(it) }
     }
 
     override suspend fun powerOffSync(uuid: String): Result<Unit> {
@@ -325,7 +324,7 @@ object SangforClient : IVMClient {
                     }
                 }
             """.trimIndent())
-        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+        }.also { SangforHttpException.mustBeSuccess(it) }
     }
 
     // NOTE: Sangfor platform bug make editing impossible
@@ -373,7 +372,7 @@ object SangforClient : IVMClient {
                     "description": "$description"
                 }
             """.trimIndent())
-        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+        }.also { SangforHttpException.mustBeSuccess(it) }
             .bodyAsText()
             .let { jsonMapper.readTree(it) }
             .get("data")
@@ -441,13 +440,40 @@ object SangforClient : IVMClient {
                             "disks": [{
                                 "id": "ide0",
                                 "type": "new_disk",
-                                "preallocate": "metadata",
+                                "preallocate": "off",
                                 "size_mb": ${options.diskSize / 1048576L},
-                                "is_old_disk": 0,
+                                "is_old_disk": 1,
                                 "storage_file": "3600d0231000859694803abfa3b686284:vm-disk-1.qcow2",
                                 "use_virtio": 1,
                                 "discard": 0
-                            }]
+                            }],
+                            "advance_param": {
+                                "balloon_memory": 0,
+                                "mouse_type": "usb",
+                                "use_vblk": 1,
+                                "bios": {
+                                    "bios_type": "SEABIOS",
+                                    "boot_delay_seconds": 0
+                                },
+                                "real_use_vblk": 1,
+                                "timing_sync_vm_clock_enable": 0,
+                                "boot_order": "dc",
+                                "cpu_hotplug": 1,
+                                "use_uuid": 1,
+                                "abnormal_recovery": 1,
+                                "mem_hotplug": 1,
+                                "boot_disk": "ide0",
+                                "invtsc": 0,
+                                "schedopt": 0,
+                                "hugepage_memory": 0,
+                                "cpu_exclusive": 0,
+                                "sandbox": 0,
+                                "cpu_type": "core2duo",
+                                "graphic_type": "cirrus",
+                                "onboot": 0,
+                                "dir": "71dc87680938",
+                                "numa": 1
+                            }
                         }
                     """.trimIndent())
                 }.bodyAsText()
@@ -505,7 +531,7 @@ object SangforClient : IVMClient {
         }
 
         if (!response.status.isSuccess()) {
-            val exception = SangforHttpExcetion(response.status, response.bodyAsText())
+            val exception = SangforHttpException(response.status, response.bodyAsText())
             return Result.failure(exception)
         }
 
@@ -518,7 +544,7 @@ object SangforClient : IVMClient {
         val vmRes = client.get("janus/20180725/servers/$uuid") {
             addAuthorization(getToken().id)
             configureHeader()
-        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+        }.also { SangforHttpException.mustBeSuccess(it) }
             .bodyAsText()
             .let { jsonMapper.readTree(it) }
 
@@ -537,7 +563,7 @@ object SangforClient : IVMClient {
                     "description": "$newDescription"
                 }
             """.trimIndent())
-        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+        }.also { SangforHttpException.mustBeSuccess(it) }
             .bodyAsText()
             .let { jsonMapper.readTree(it) }
             .get("data")
@@ -557,7 +583,7 @@ object SangforClient : IVMClient {
             {
                 powerOffSync(it.uuid)
             }
-        }, onFailure = { throw SangforHttpExcetion(HttpStatusCode.NotFound, "no machine with id $uuid found")})
+        }, onFailure = { throw SangforHttpException(HttpStatusCode.NotFound, "no machine with id $uuid found")})
     }
 
     suspend fun clone(tokenString: String,
@@ -577,10 +603,11 @@ object SangforClient : IVMClient {
                     "storage_tag_id": "11111111-1111-1111-1111-111111111111",
                     "advance_param": {
                         "return_uuids": 1
-                    }
+                    },
+                    "clone_type": "full"
                 }
             """.trimIndent())
-        }.also { SangforHttpExcetion.mustBeSuccess(it) }
+        }.also { SangforHttpException.mustBeSuccess(it) }
 
         val responseJson = jsonMapper.readTree(response.body<String>())
         return SangforAsyncTask(
@@ -614,7 +641,7 @@ data class SangforAsyncTask<TData>(val taskId: String, val extraData :TData) {
             val taskQueryResponse = client.get("janus/20180725/tasks/$taskId") {
                 configureHeader()
                 addAuthorization(tokenProvider)
-            }.also { SangforHttpExcetion.mustBeSuccess(it) }
+            }.also { SangforHttpException.mustBeSuccess(it) }
 
             jsonMapper.readTree(taskQueryResponse.body<String>())["data"]
         }

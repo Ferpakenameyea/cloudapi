@@ -5,7 +5,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 
-class SangforHttpExcetion : Exception {
+class SangforHttpException : Exception {
     val code: HttpStatusCode
     val httpMessage: String?
 
@@ -21,7 +21,7 @@ class SangforHttpExcetion : Exception {
     companion object {
         suspend fun mustBeSuccess(response: HttpResponse) {
             if (!response.status.isSuccess()) {
-                throw SangforHttpExcetion(
+                throw SangforHttpException(
                     response.status,
                     response.bodyAsText()
                 )
