@@ -45,6 +45,7 @@ import java.security.spec.RSAPublicKeySpec
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.net.ssl.X509TrustManager
+import kotlin.random.Random
 
 object SangforClient : IVMClient {
 
@@ -341,7 +342,7 @@ object SangforClient : IVMClient {
         }.body<String>()
 
         val vmResponse = jsonMapper.readTree(vmJson)["data"]
-        
+
         val legacyDescription: String? = vmResponse["description"]?.textValue()
         val infoArray = legacyDescription?.split(',')
 
@@ -447,6 +448,15 @@ object SangforClient : IVMClient {
                                 "use_virtio": 1,
                                 "discard": 0
                             }],
+                            "networks": [{
+                                "connect": 1,
+                                "vif_id": "net0",
+                                "name": "物理出口1",
+                                "device_id": "7008958d-4b99-4ff6-866e-f2d5873f1aa6",
+                                "mac_address": "${randomMac()}",
+                                "model": "virtio",
+                                "port_id": "c89b4b0c-84c2-4e1b-87d0-cd3f3f0a7417"
+                            }],
                             "advance_param": {
                                 "balloon_memory": 0,
                                 "mouse_type": "usb",
@@ -501,6 +511,19 @@ object SangforClient : IVMClient {
         log.info("done")
 
         return getVM(virtualMachineUUID)
+    }
+
+    fun randomMac(): String {
+        val mac = ByteArray(6)
+        Random.nextBytes(mac)
+
+        mac[0] = (mac[0].toInt() and 0b11111110).toByte()
+
+        mac[0] = (mac[0].toInt() or 0b00000010).toByte()
+
+        return mac.joinToString(":") {
+            "%02x".format(it)
+        }
     }
 
     private suspend fun isVmExistAndConfigurable(virtualMachineUUID: String): Boolean {
