@@ -526,6 +526,28 @@ object SangforClient : IVMClient {
         }
     }
 
+    suspend fun getWebConsoleUrl(uuid: String): String {
+        val response = client.post("servers/${uuid}/action") {
+            configureHeader()
+            addAuthorization(suspend { getToken().id })
+
+            setBody("""
+                {
+                    "os-getVNCConsole": {
+                        "type": "novnc"
+                    }
+                }
+            """.trimIndent())
+        }
+            .also { SangforHttpException.mustBeSuccess(it) }
+            .body<String>()
+
+        val content = jsonMapper.readTree(response)
+        val connectUrl = content["console"]["url"].textValue()
+
+        return connectUrl
+    }
+
     private suspend fun isVmExistAndConfigurable(virtualMachineUUID: String): Boolean {
         val response = client.get("janus/20180725/servers/$virtualMachineUUID") {
             configureHeader()
@@ -650,6 +672,7 @@ object SangforClient : IVMClient {
     internal fun HttpRequestBuilder.addAuthorization(tokenProvider : suspend () -> String) {
         addAuthorization(runBlocking { tokenProvider() })
     }
+
 }
 
 data class SangforToken(val id: String)
