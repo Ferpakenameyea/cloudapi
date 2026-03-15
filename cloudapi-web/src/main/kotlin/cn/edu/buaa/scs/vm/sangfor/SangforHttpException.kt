@@ -1,5 +1,6 @@
 package cn.edu.buaa.scs.vm.sangfor
 
+import cn.edu.buaa.scs.utils.logger
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
@@ -21,6 +22,10 @@ class SangforHttpException : Exception {
     companion object {
         suspend fun mustBeSuccess(response: HttpResponse) {
             if (!response.status.isSuccess()) {
+                logger("sangfor")().error("Error in http response. Status: {}. Message: {}",
+                    response.status,
+                    response.bodyAsText())
+
                 throw SangforHttpException(
                     response.status,
                     response.bodyAsText()
