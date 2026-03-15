@@ -48,12 +48,6 @@ fun Route.vmRoute() {
                 val ticketResponse = call.vm.getWebTicket(vmId)
                 call.respond(ticketResponse)
             }
-
-            get("/sangforwebconsole") {
-                val vmId = call.getVmIdFromPath()
-                val webConsoleUrl = call.vm.getVmConnectUrl(vmId)
-                call.respond(webConsoleUrl)
-            }
         }
 
         route("/template") {

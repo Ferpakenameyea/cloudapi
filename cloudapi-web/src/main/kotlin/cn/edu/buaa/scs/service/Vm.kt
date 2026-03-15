@@ -63,10 +63,6 @@ class VmService(val call: ApplicationCall) : IService {
         return vmClient.getWebTicket(uuid).getOrThrow()
     }
 
-    suspend fun getVmConnectUrl(uuid: String): String {
-        return sfClient.getWebConsoleUrl(uuid)
-    }
-
     fun getPersonalVms(): List<VirtualMachineCrd> {
         val vmApplyList =
             mysql.vmApplyList.filter { ((it.studentId eq call.userId()) or (it.teacherId eq call.userId())) and (it.experimentId eq 0) }
