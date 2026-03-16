@@ -57,9 +57,8 @@ object VCenterClient : IVMClient {
 
     private fun vmNotFound(uuid: String): NotFoundException = NotFoundException("virtualMachine($uuid) not found")
 
-    override suspend fun getHosts(): Result<List<Host>> {
-        val hosts = vmClient.getHosts()
-        return hosts
+    override suspend fun getHosts(): Result<List<Host>> = runCatching {
+        client.get<List<Host>>("/hosts").getOrThrow()
     }
 
     override suspend fun getAllVMs(): Result<List<VirtualMachine>> = runCatching {
