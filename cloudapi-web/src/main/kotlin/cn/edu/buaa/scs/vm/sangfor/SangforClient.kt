@@ -2,7 +2,6 @@ package cn.edu.buaa.scs.vm.sangfor
 
 import cn.edu.buaa.scs.application
 import cn.edu.buaa.scs.cache.authRedis
-import cn.edu.buaa.scs.controller.models.Image
 
 import cn.edu.buaa.scs.error.NotFoundException
 import cn.edu.buaa.scs.model.Host
@@ -174,7 +173,7 @@ object SangforClient : IVMClient {
             addAuthorization(tokenProvider)
             parameter("page_num", "0")
             parameter("page_size", "1")
-            parameter("host_id", hostId)
+            parameter("az_id", hostId)
         }.body<String>()
 
         return jsonMapper.readTree(response)
@@ -183,9 +182,36 @@ object SangforClient : IVMClient {
             .intValue()
     }
 
+    private suspend fun getHostResourceStatus(hostId: String, tokenProvider: suspend () -> String): SangforResources {
+        val response = client.get("janus/20180725/azs/${hostId}") {
+            configureHeader()
+            addAuthorization(tokenProvider)
+        }.body<String>()
+
+        val data = jsonMapper.readTree(response)
+            .get("data")
+
+        val physicalResources = data.get("physical_resources")
+
+        val cpu = physicalResources.first { it.get("name").textValue() == "cpu" }
+        val memory = physicalResources.first { it.get("name").textValue() == "memory" }
+        val storage = physicalResources.first { it.get("name").textValue() == "storage" }
+
+        return SangforResources(
+            totalCPUMhz = cpu.get("total").doubleValue(),
+            usedCPUMhz = cpu.get("used").doubleValue(),
+
+            totalMemoryMB = memory.get("total").doubleValue(),
+            usedMemoryMB = memory.get("used").doubleValue(),
+
+            totalStorageBytes = storage.get("total").doubleValue().toLong() * 1024 * 1024,
+            usedStorageBytes = storage.get("used").doubleValue().toLong() * 1024 * 1024,
+        )
+    }
+
     override suspend fun getHosts(): Result<List<Host>> = coroutineScope {
         val token = getAdminToken().id
-        val response = client.get("janus/20180725/hosts") {
+        val response = client.get("janus/20190725/azs") {
             addAuthorization(token)
             configureHeader()
         }.body<String>()
@@ -196,16 +222,18 @@ object SangforClient : IVMClient {
             async {
                 val hostId = hostJson["id"].textValue()
                 val vmCount = getHostVmCount(hostId, suspend { getToken().id })
+                val resource = getHostResourceStatus(hostId, suspend { getToken().id })
                 Host(
-                    ip           = hostJson["ip"].textValue(),
-                    status       = hostJson["status"].textValue(),
-                    totalMem     = hostJson["memory"]["total_mb"].doubleValue(),
-                    usedMem      = hostJson["memory"]["used_mb"].doubleValue(),
-                    totalCPU     = hostJson["cpu"]["total_mhz"].doubleValue(),
-                    usedCPU      = hostJson["cpu"]["used_mhz"].doubleValue(),
-                    totalStorage = hostJson["storage"]["total_mb"].doubleValue().toLong(),
-                    usedStorage  = 0L,
-                    count        = vmCount
+                    // TODO: 暂未找到为深信服资源池获取管理IP的方法
+                    ip                  = "sangfor-noip-for-host",
+                    status              = hostJson["status"].textValue(),
+                    totalMemMB          = resource.totalMemoryMB,
+                    usedMemMB           = resource.usedMemoryMB,
+                    totalCPUMhz         = resource.totalCPUMhz,
+                    usedCPUMhz          = resource.usedCPUMhz,
+                    totalStorageBytes   = resource.totalStorageBytes,
+                    usedStorageBytes    = resource.usedStorageBytes,
+                    count               = vmCount,
                 )
             }
         }
@@ -696,6 +724,15 @@ data class SangforAsyncTask<TData>(val taskId: String, val extraData :TData) {
         return taskQueryData
     }
 }
+
+private data class SangforResources(
+    val totalMemoryMB: Double,
+    val usedMemoryMB: Double,
+    val totalCPUMhz: Double,
+    val usedCPUMhz: Double,
+    val totalStorageBytes: Long,
+    val usedStorageBytes: Long
+)
 
 internal object SangforRSA {
     private fun buildPublicKey(modulusHex: String): RSAPublicKey {

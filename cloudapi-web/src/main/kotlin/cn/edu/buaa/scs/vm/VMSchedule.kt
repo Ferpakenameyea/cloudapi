@@ -39,9 +39,9 @@ private fun scheduleOnPlatforms(
     val filtered = hosts.filter {
         val host = it.host
 
-        val acceptable = host.totalCPU - host.usedCPU > cpu &&
-                host.totalMem - host.usedMem > memory &&
-                host.totalStorage - host.usedStorage > diskSize
+        val acceptable = host.totalCPUMhz - host.usedCPUMhz > cpu &&
+                host.totalMemMB - host.usedMemMB > memory &&
+                host.totalStorageBytes - host.usedStorageBytes > diskSize
 
         acceptable
     }
@@ -52,9 +52,9 @@ private fun scheduleOnPlatforms(
 private fun worstFit(filteredHosts: List<ScheduleItem>): String {
     val decidedHost = filteredHosts.maxBy {
         val host = it.host
-        val cpuAvailablePercentage = (host.totalCPU - host.usedCPU) / host.totalCPU
-        val memoryAvailablePercentage = (host.totalMem - host.usedMem) / host.totalMem
-        val storageAvailablePercentage = (host.totalStorage - host.usedStorage) / host.totalStorage
+        val cpuAvailablePercentage = (host.totalCPUMhz - host.usedCPUMhz) / host.totalCPUMhz
+        val memoryAvailablePercentage = (host.totalMemMB - host.usedMemMB) / host.totalMemMB
+        val storageAvailablePercentage = (host.totalStorageBytes - host.usedStorageBytes) / host.totalStorageBytes
 
         val score = cpuAvailablePercentage * cpuWeight +
                 storageAvailablePercentage * diskWeight +

@@ -129,10 +129,10 @@ object VCenterWrapper {
             hostList.map { (hostRef, hostProps) ->
                 val hostSummary = hostProps["summary"]!! as HostListSummary
                 val hostHardwareSummary = hostSummary.hardware
-                var usedMem = 0.0
+                var usedMemMB = 0.0
                 var usedCPU = 0.0
                 if (hostSummary.runtime.connectionState === HostSystemConnectionState.CONNECTED) {
-                    usedMem = 1.0 * hostSummary.quickStats.overallMemoryUsage
+                    usedMemMB = 1.0 * hostSummary.quickStats.overallMemoryUsage
                     usedCPU = 1.0 * hostSummary.quickStats.overallCpuUsage
                 }
                 val dataStores = (hostProps["datastore"] as ArrayOfManagedObjectReference?)!!.managedObjectReference
@@ -143,12 +143,12 @@ object VCenterWrapper {
                 Host(
                     ip = hostProps["name"]!! as String,
                     status = hostSummary.runtime.connectionState.value(),
-                    totalMem = 1.0 * hostHardwareSummary.memorySize,
-                    usedMem = usedMem,
-                    totalCPU = 1.0 * hostHardwareSummary.cpuMhz * hostHardwareSummary.numCpuCores,
-                    usedCPU = usedCPU,
-                    totalStorage = totalStorage,
-                    usedStorage = usedStorage,
+                    totalMemMB = 1.0 * hostHardwareSummary.memorySize / (1024.0 * 1024.0),
+                    usedMemMB = usedMemMB,
+                    totalCPUMhz = 1.0 * hostHardwareSummary.cpuMhz * hostHardwareSummary.numCpuCores,
+                    usedCPUMhz = usedCPU,
+                    totalStorageBytes = totalStorage,
+                    usedStorageBytes = usedStorage,
                     count = (hostProps["vm"]!! as ArrayOfManagedObjectReference).managedObjectReference.size,
                 )
             }
