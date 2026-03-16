@@ -181,7 +181,7 @@ class VmService(val call: ApplicationCall) : IService {
     fun addVmsToApply(id: String, studentIdList: List<String>): VmApply {
         val vmApply = mysql.vmApplyList.find { it.id.eq(id) } ?: throw NotFoundException()
         val templateVM = mysql.virtualMachines.find { it.uuid.eq(vmApply.templateUuid) }
-        var platform = schedule(vmApply)
+        var platform = "vcenter"
         templateVM?.let {
             platform = it.platform
         }

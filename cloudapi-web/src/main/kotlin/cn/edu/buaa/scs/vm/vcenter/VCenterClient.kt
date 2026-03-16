@@ -59,8 +59,7 @@ object VCenterClient : IVMClient {
 
     override suspend fun getHosts(): Result<List<Host>> {
         // TODO "Not yet implemented"
-        val hosts = vmClient.getHosts()
-        return hosts
+        return Result.success(Collections.emptyList());
     }
 
     override suspend fun getAllVMs(): Result<List<VirtualMachine>> = runCatching {
