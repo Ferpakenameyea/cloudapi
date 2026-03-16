@@ -22,6 +22,7 @@ import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.server.application.*
+import io.ktor.server.auth.UnauthorizedResponse
 import io.ktor.server.plugins.*
 import org.ktorm.dsl.and
 import org.ktorm.dsl.eq
@@ -292,6 +293,21 @@ class AuthService(val call: ApplicationCall) : IService {
         user.flushChanges()
 
 //        call.project.createUser(user)
+
+        return afterLogin(generateRSAToken(user.id), user)
+    }
+
+    suspend fun forcedActiveUser(userId: String, password: String): LoginUserResponse {
+        if (!call.user().isAdmin()) {
+            throw BadRequestException("只有管理员才能强制激活用户")
+        }
+
+        val user = User.id(userId)
+
+        user.password = password
+        user.isAccepted = true
+        user.acceptTime = System.currentTimeMillis().toString()
+        user.flushChanges()
 
         return afterLogin(generateRSAToken(user.id), user)
     }

@@ -110,4 +110,12 @@ fun Route.authRoute() {
             call.respond("OK")
         }
     }
+
+    route("/forcedActivateUser") {
+        post {
+            val req = call.receive<ForcedActivateUserRequest>()
+            call.auth.forcedActiveUser(req.userId, req.password)
+            call.respond("OK")
+        }
+    }
 }
