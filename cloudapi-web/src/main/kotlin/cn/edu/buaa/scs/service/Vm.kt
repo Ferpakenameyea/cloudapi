@@ -206,11 +206,7 @@ class VmService(val call: ApplicationCall) : IService {
         vmApply.replyMsg = replyMsg
         vmApply.handleTime = System.currentTimeMillis()
 
-        val templateVM = mysql.virtualMachines.find { it.uuid.eq(vmApply.templateUuid) }
-        var platform = reschedule(vmApply)
-        templateVM?.let {
-            platform = it.platform
-        }
+        val platform = reschedule(vmApply)
 
         if (approve) {
             vmApply.namespaceName().ensureNamespace(kubeClient)
