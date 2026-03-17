@@ -39,7 +39,8 @@ object VCenterClient : IVMClient {
                     }
                 }
                 install(HttpTimeout) {
-                    requestTimeoutMillis = 10000L
+                    // 10 mins since creating a virtual machine might take a long time
+                    requestTimeoutMillis = 10 * 1000 * 1000L
                 }
                 engine {
                     https {

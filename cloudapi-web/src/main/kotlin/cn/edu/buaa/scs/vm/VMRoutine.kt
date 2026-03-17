@@ -141,11 +141,6 @@ object VMRoutine : Routine {
         mysql.virtualMachines.filter { it.lifetime.eq(VirtualMachine.Lifetime.DELETED) }
             .toList()
             .forEach { vm ->
-                if (vm.platform == "vcenter") {
-                    log.info("platform protection: skipping deleting in vcenter. uuid: {}, name: {} with lifetime: DELETED",
-                        vm.uuid,
-                        vm.name)
-                }
                 val client = getVmClient(vm.platform)
                 client.deleteVM(vm.uuid)
                     .onSuccess { vm.delete() }
