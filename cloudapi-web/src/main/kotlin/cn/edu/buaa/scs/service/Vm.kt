@@ -34,6 +34,8 @@ class VmService(val call: ApplicationCall) : IService {
         when (action.lowercase()) {
             "poweron" -> vm.spec = vm.spec.copy(powerState = VirtualMachine.PowerState.PoweredOn)
             "poweroff" -> vm.spec = vm.spec.copy(powerState = VirtualMachine.PowerState.PoweredOff)
+            // this is to bypass buaa's weird restriction in http methods
+            "imsosad" -> vm.spec = vm.spec.copy(powerState = VirtualMachine.PowerState.PoweredOff)
         }
         vmKubeClient.resource(vm).patch()
     }
@@ -111,16 +113,6 @@ class VmService(val call: ApplicationCall) : IService {
             throw AuthorizationException()
         }
         val items = vmKubeClient.inAnyNamespace().list().items
-        val logger = logger("vm")()
-        items.map {
-            """
-            {
-                "id": "${it.status.uuid}"
-                "name": "${it.spec.name}"
-                "deleted": "${it.spec.deleted}"
-            }
-            """.trimIndent()
-        }.forEach { logger.info(it) }
 
         return items.filter { !it.spec.deleted }
     }
