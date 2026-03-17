@@ -21,6 +21,7 @@ private val log = logger("schedule")()
 private fun getAlternates(): List<AlternateItem> {
     val raw = application.getConfigList("vm.schedule.alternate", default = Collections.emptyList())
     val list = raw.map {
+        log.info("Parsing item: {}", it)
         jsonMapper.readValue(it, AlternateItem::class.java)
     }.filter { it.valid }
 
