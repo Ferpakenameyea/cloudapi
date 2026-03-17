@@ -394,20 +394,40 @@ object VCenterWrapper {
     }
 
     private fun waitForTaskResult(connection: Connection, task: ManagedObjectReference): Result<Unit> {
-        val waitForValues = WaitForValues(connection)
-        val result: Array<Any> = waitForValues.wait(
-            task,
-            arrayOf("info.state", "info.error"),
-            arrayOf("info.state"),
-            arrayOf(arrayOf<Any>(TaskInfoState.SUCCESS, TaskInfoState.ERROR))
-        )
-        return if (result[0] == TaskInfoState.SUCCESS) {
-            return Result.success(Unit)
-        } else {
-            when (val fault = result[1]) {
-                is LocalizedMethodFault -> Result.failure(RuntimeException(fault.localizedMessage))
-                else -> Result.failure(RuntimeException("unknown error"))
+        val log = logger("task-poll")()
+        val intervalMillis = 2_000L
+        val getMoRef = connection.getMoRef()
+
+        log.info("waiting for task result...")
+
+        while (true) {
+            try {
+                val props = getMoRef.entityProps(task, "info.state", "info.error")
+                val state = props["info.state"] as TaskInfoState?
+
+                when (state) {
+                    TaskInfoState.SUCCESS -> {
+                        return Result.success(Unit)
+                    }
+
+                    TaskInfoState.ERROR -> {
+                        val fault = props["info.error"]
+                        return when (fault) {
+                            is LocalizedMethodFault ->
+                                Result.failure(RuntimeException(fault.localizedMessage))
+
+                            else ->
+                                Result.failure(RuntimeException("unknown error"))
+                        }
+                    }
+                    else -> {}
+                }
+
+            } catch (e: Exception) {
+                log.error("error in polling for task result.", e)
             }
+
+            Thread.sleep(intervalMillis)
         }
     }
 }
