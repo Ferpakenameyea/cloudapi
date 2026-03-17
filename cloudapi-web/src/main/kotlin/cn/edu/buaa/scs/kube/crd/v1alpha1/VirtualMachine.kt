@@ -171,7 +171,20 @@ class VirtualMachineReconciler(val client: KubernetesClient) : Reconciler<Virtua
                             Thread.currentThread().name)
                         if (createVmProcessMutex.tryLock(vm)) {
                             try {
-                                vmClient.createVM(vm.spec.toCreateVmOptions()).getOrThrow()
+                                log.info("checking vm status {} again.", vm.spec.name)
+                                val model = vmClient.getVMByName(vm.spec.name, vm.spec.getVmExtraInfo().applyId)
+                                if (model.isSuccess) {
+                                    log.info("vm found, cancelling creation")
+                                    return@runBlocking null
+                                }
+
+                                log.info("creating vm {}", vm.spec.name)
+                                vmClient.createVM(vm.spec.toCreateVmOptions())
+                                    .also { log.info("vm creation done. name: {} using platform: {}. created on thread: {}",
+                                        vm.spec.name,
+                                        vm.spec.platform,
+                                        Thread.currentThread().name)}
+                                    .getOrThrow()
                             } catch (e: Throwable) {
                                 log.error("error when trying to create vm, name: {}", vm.spec.name)
                                 log.error("exception", e)
