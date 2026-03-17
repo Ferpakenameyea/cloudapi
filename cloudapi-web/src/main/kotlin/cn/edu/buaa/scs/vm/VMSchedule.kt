@@ -17,8 +17,8 @@ import java.util.Collections
 import kotlin.math.abs
 
 private val alternates: List<AlternateItem> = getAlternates()
-private val log = logger("schedule")()
 private fun getAlternates(): List<AlternateItem> {
+    val log = logger("schedule-init")()
     val raw = application.getConfigList("vm.schedule.alternate", default = Collections.emptyList())
     val list = raw.map {
         log.info("Parsing item: {}", it)
@@ -31,6 +31,7 @@ private fun getAlternates(): List<AlternateItem> {
 }
 
 fun reschedule(vmApply: VmApply): String {
+    val log = logger("schedule")()
     val templateUuid = vmApply.templateUuid
     val alternate = alternates.firstOrNull { it.vcenterUuid == templateUuid || it.sangforUuid == templateUuid }
     val templateVm = mysql.virtualMachines
