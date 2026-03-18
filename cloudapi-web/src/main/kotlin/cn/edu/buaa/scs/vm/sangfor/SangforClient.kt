@@ -627,6 +627,36 @@ object SangforClient : IVMClient {
         return getVM(uuid)
     }
 
+    suspend fun getWebConsoleUrl(uuid: String): String {
+        val log = logger("vm-get-console")()
+        log.info("Getting web console of vm with id {}", uuid)
+        val response = client.post("janus/20180725/servers/$uuid/remote-consoles") {
+            configureHeader()
+            addAuthorization(suspend { getToken().id })
+            setBody("""
+                {
+                    "remote_console": {
+                        "protocol": "vnc",
+                        "type": "novnc"
+                    }
+                }
+            """.trimIndent())
+        }
+
+        // status check
+        if (response.status == HttpStatusCode.NotFound) {
+            log.error("Given vm with uuid {} not found. Fetching web console url failed.", uuid)
+            throw NotFoundException("Given vm of uuid: $uuid not found in sangfor platform")
+        }
+
+        SangforHttpException.mustBeSuccess(response)
+
+        log.info("Getting web console of vm with uuid {} succeeded.", uuid)
+        val responseJson = jsonMapper.readTree(response.body<String>())
+        val url = responseJson["data"]["remote_console"]["url"].textValue()
+        return url
+    }
+
     private suspend fun ensurePoweredOff(uuid: String) {
         val vm = getVM(uuid)
         vm.fold(onSuccess = {

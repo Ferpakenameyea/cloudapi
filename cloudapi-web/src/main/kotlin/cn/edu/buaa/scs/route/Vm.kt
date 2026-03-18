@@ -19,6 +19,13 @@ fun Route.vmRoute() {
         fun ApplicationCall.getVmIdFromPath(): String =
             parameters["vmId"] ?: throw BadRequestException("vm id is invalid")
 
+        route("/sangfor/{vmId}/console") {
+            get {
+                val vmId = call.getVmIdFromPath()
+                call.respond(call.vm.getSangforWebConsoleUrl(vmId))
+            }
+        }
+
         route("/{vmId}") {
 
             get {
