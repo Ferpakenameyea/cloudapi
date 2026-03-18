@@ -9,12 +9,17 @@ import cn.edu.buaa.scs.utils.getConfigList
 import cn.edu.buaa.scs.utils.getConfigString
 import cn.edu.buaa.scs.utils.jsonMapper
 import cn.edu.buaa.scs.utils.logger
+import cn.edu.buaa.scs.vm.schedule.IScheduler
 import com.fasterxml.jackson.annotation.JsonProperty
 import kotlinx.coroutines.runBlocking
 import org.ktorm.dsl.eq
 import org.ktorm.entity.firstOrNull
 import java.util.Collections
-import kotlin.math.abs
+
+internal val cpuWeight: Double = application.getConfigString("schedule.weight.cpu", default = "1.0").toDouble()
+internal val diskWeight: Double = application.getConfigString("schedule.weight.disk", default = "1.0").toDouble()
+internal val memoryWeight: Double = application.getConfigString("schedule.weight.memory", default = "1.0").toDouble()
+private val scheduler: IScheduler = IScheduler.getScheduler()
 
 private val alternates: List<AlternateItem> = getAlternates()
 private fun getAlternates(): List<AlternateItem> {
@@ -70,7 +75,7 @@ fun reschedule(vmApply: VmApply): String {
         }
     }
 
-    val platform = worstFitSchedule(
+    val platform = scheduler.schedule(
         vmApply.cpu,
         vmApply.memory,
         vmApply.diskSize,
@@ -93,96 +98,13 @@ fun reschedule(vmApply: VmApply): String {
     return platform
 }
 
-// 三阶段 fallback（逐渐放宽限制）
-private val stages = listOf(
-    SchedulePolicy(0.10, true),
-    SchedulePolicy(0.05, true),
-    SchedulePolicy(0.0, false)
-)
 
-private fun worstFitSchedule(
-    cpu: Int,
-    memory: Int,
-    diskSize: Long,
-    hosts: List<ScheduleItem>
-): String {
-    for (policy in stages) {
-        val result = trySchedule(cpu, memory, diskSize, hosts, policy)
-        if (result != null) return result
-    }
-
-    throw IllegalStateException("No available host after all scheduling strategies")
-}
-
-private fun trySchedule(
-    cpu: Int,
-    memory: Int,
-    diskSize: Long,
-    hosts: List<ScheduleItem>,
-    policy: SchedulePolicy
-): String? {
-
-    val totalWeight = cpuWeight + memoryWeight + diskWeight
-
-    val candidates = hosts.mapNotNull { item ->
-        val host = item.host
-
-        val cpuRemain = host.totalCPUMhz - host.usedCPUMhz
-        val memRemain = host.totalMemMB - host.usedMemMB
-        val diskRemain = host.totalStorageBytes - host.usedStorageBytes
-
-        // 必须放得下
-        if (cpuRemain < cpu || memRemain < memory || diskRemain < diskSize) {
-            return@mapNotNull null
-        }
-
-        // 放进去之后的剩余比例
-        val cpuAfter = (cpuRemain - cpu) / host.totalCPUMhz
-        val memAfter = (memRemain - memory) / host.totalMemMB
-        val diskAfter = (diskRemain - diskSize).toDouble() / host.totalStorageBytes
-
-        // 安全水位（after）
-        if (cpuAfter < policy.minHeadroom ||
-            memAfter < policy.minHeadroom ||
-            diskAfter < policy.minHeadroom
-        ) {
-            return@mapNotNull null
-        }
-
-        // Worst Fit 核心评分
-        val score =
-            cpuAfter * (cpuWeight / totalWeight) +
-                    memAfter * (memoryWeight / totalWeight) +
-                    diskAfter * (diskWeight / totalWeight)
-
-        // 资源均衡惩罚
-        val imbalancePenalty = abs(cpuAfter - memAfter) + abs(memAfter - diskAfter)
-
-        // 平台均衡因子
-        val platformFactor = getPlatformFactor(item.platform)
-
-        val finalScore =
-            score * platformFactor -
-                    (if (policy.enableImbalancePenalty) imbalancePenalty * 0.3 else 0.0)
-
-        item to finalScore
-    }
-
-    if (candidates.isEmpty()) return null
-
-    return candidates.maxBy { it.second }.first.platform
-}
-
-private val cpuWeight: Double = application.getConfigString("schedule.weight.cpu", default = "1.0").toDouble()
-private val diskWeight: Double = application.getConfigString("schedule.weight.disk", default = "1.0").toDouble()
-private val memoryWeight: Double = application.getConfigString("schedule.weight.memory", default = "1.0").toDouble()
-
-private data class ScheduleItem(
+internal data class ScheduleItem(
     val host: Host,
     val platform: String,
 )
 
-data class AlternateItem(
+internal data class AlternateItem(
     @field:JsonProperty("sangfor_uuid")
     val sangforUuid: String?,
     @field:JsonProperty("vcenter_uuid")
@@ -190,17 +112,4 @@ data class AlternateItem(
 ) {
     val isComplete: Boolean get() = sangforUuid != null && vcenterUuid != null
     val valid: Boolean get() = sangforUuid != null || vcenterUuid != null
-}
-
-private data class SchedulePolicy(
-    val minHeadroom: Double,            // 安全水位
-    val enableImbalancePenalty: Boolean // 是否启用均衡惩罚
-)
-
-private fun getPlatformFactor(platform: String): Double {
-    return when (platform) {
-        "vcenter" -> 1.0
-        "sangfor" -> 0.98
-        else -> 1.0
-    }
 }
