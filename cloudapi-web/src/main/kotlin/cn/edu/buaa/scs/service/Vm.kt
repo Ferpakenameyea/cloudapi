@@ -194,6 +194,7 @@ class VmService(val call: ApplicationCall) : IService {
     }
 
     private fun approveApply(vmApply: VmApply, approve: Boolean, replyMsg: String): VmApply {
+        val log = logger("vm-apply-approve-handler")()
         if (approve) {
             vmApply.status = 1
         } else {
@@ -202,7 +203,21 @@ class VmService(val call: ApplicationCall) : IService {
         vmApply.replyMsg = replyMsg
         vmApply.handleTime = System.currentTimeMillis()
 
-        val platform = reschedule(vmApply)
+        val platform = if (vmApply.acceptSchedule) {
+            log.info("vmApply with id {} (name: {}, description: {}) accepts scheduling. Trying to reschedule",
+                vmApply.id,
+                vmApply.namePrefix,
+                vmApply.description)
+            reschedule(vmApply)
+        } else {
+            log.warn("vmApply with id {} (name: {}, description: {}) refuses to be rescheduled!",
+                vmApply.id,
+                vmApply.namePrefix,
+                vmApply.description)
+            val platformResult = getPlatformOf(vmApply.templateUuid)
+            log.warn("This might bring too much pressure on platform: {}", platformResult)
+            platformResult
+        }
 
         if (approve) {
             vmApply.namespaceName().ensureNamespace(kubeClient)
@@ -215,6 +230,18 @@ class VmService(val call: ApplicationCall) : IService {
         }
         mysql.vmApplyList.update(vmApply)
         return vmApply
+    }
+
+    private fun getPlatformOf(uuid: String): String {
+        val vmModel = mysql.virtualMachines.firstOrNull {
+            it.uuid.eq(uuid)
+        }
+
+        if (vmModel == null) {
+            throw cn.edu.buaa.scs.error.NotFoundException("Cannot find template with uuid: $uuid")
+        }
+
+        return vmModel.platform
     }
 
     fun deleteFromApply(id: String, studentId: String?, teacherId: String?, studentIdList: List<String>?): VmApply {
@@ -274,6 +301,7 @@ class VmService(val call: ApplicationCall) : IService {
             this.status = 0
             this.handleTime = 0L
             this.dueTime = request.dueTime
+            this.acceptSchedule = request.acceptSchedule
         }
         when {
             request.studentId != null ->

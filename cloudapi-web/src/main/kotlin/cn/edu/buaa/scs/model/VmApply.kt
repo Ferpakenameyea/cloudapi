@@ -34,6 +34,7 @@ interface VmApply : Entity<VmApply>, IEntity {
     var replyMsg: String
     var dueTime: Long
     var applicant: String
+    var acceptSchedule: Boolean
 
     var done: Boolean   // 是否完成所有虚拟机的创建
 
@@ -65,7 +66,7 @@ object VmApplyList : Table<VmApply>("vm_apply") {
     val exceptedNum = int("expected_num").bindTo { it.expectedNum }
     var replyMsg = text("reply_msg").bindTo { it.replyMsg }
     var dueTime = long("due_time").bindTo { it.dueTime }
-
+    var acceptSchedule = boolean("accept_schedule").bindTo { it.acceptSchedule }
     var done = boolean("done").bindTo { it.done }
 }
 
