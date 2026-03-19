@@ -167,11 +167,13 @@ class VmService(val call: ApplicationCall) : IService {
         return mysql.vmApplyList.find { it.id.eq(id) } ?: throw NotFoundException()
     }
 
-    fun handleApply(id: String, approve: Boolean, replyMsg: String): VmApply {
+    fun handleApply(id: String, approve: Boolean, replyMsg: String): Result<VmApply> {
         if (!call.user().isAdmin()) throw AuthorizationException()
 
         val vmApply = mysql.vmApplyList.find { it.id.eq(id) } ?: throw NotFoundException()
-        return approveApply(vmApply, approve, replyMsg)
+        return runCatching {
+            approveApply(vmApply, approve, replyMsg)
+        }
     }
 
     fun addVmsToApply(id: String, studentIdList: List<String>): VmApply {

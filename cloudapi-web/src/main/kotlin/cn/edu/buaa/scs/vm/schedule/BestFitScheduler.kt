@@ -6,7 +6,7 @@ import cn.edu.buaa.scs.vm.diskWeight
 import cn.edu.buaa.scs.vm.memoryWeight
 import kotlin.math.abs
 
-internal class WorstFitScheduler : IScheduler {
+internal class BestFitScheduler : IScheduler {
     override fun schedule(
         cpu: Int,
         memory: Int,
@@ -42,7 +42,6 @@ internal class WorstFitScheduler : IScheduler {
         hosts: List<ScheduleItem>,
         policy: SchedulePolicy
     ): String? {
-
         val totalWeight = cpuWeight + memoryWeight + diskWeight
 
         val candidates = hosts.mapNotNull { item ->
@@ -55,8 +54,7 @@ internal class WorstFitScheduler : IScheduler {
             val memRemain = host.totalMemMB - host.usedMemMB
             val diskRemain = host.totalStorageBytes - host.usedStorageBytes
 
-            // 放进去之后的剩余比例
-            val memAfter = (memRemain - memory) / host.totalMemMB
+            val memAfter = (memRemain - memory).toDouble() / host.totalMemMB
             val diskAfter = (diskRemain - diskSize).toDouble() / host.totalStorageBytes
 
             // 安全水位（after）
@@ -66,19 +64,20 @@ internal class WorstFitScheduler : IScheduler {
                 return@mapNotNull null
             }
 
-            // Worst Fit 核心评分
-            val score =
-                        memAfter * (memoryWeight / totalWeight) +
-                        diskAfter * (diskWeight / totalWeight)
+            val memUsage = memory.toDouble() / memRemain
+            val diskUsage = diskSize.toDouble() / diskRemain
 
-            // 资源均衡惩罚
+            val score =
+                        memUsage * (memoryWeight / totalWeight) +
+                        diskUsage * (diskWeight / totalWeight)
+
+            // 均衡惩罚
             val imbalancePenalty = abs(memAfter - diskAfter)
 
-            // 平台均衡因子
             val platformFactor = getPlatformFactor(item.platform)
 
             val finalScore =
-                score * platformFactor -
+                score * platformFactor +
                         (if (policy.enableImbalancePenalty) imbalancePenalty * 0.3 else 0.0)
 
             item to finalScore
@@ -86,7 +85,6 @@ internal class WorstFitScheduler : IScheduler {
 
         if (candidates.isEmpty()) return null
 
-        return candidates.maxBy { it.second }.first.platform
+        return candidates.minBy { it.second }.first.platform
     }
 }
-

@@ -32,6 +32,9 @@ internal interface IScheduler {
 private fun initSchedulerMap(): Map<String, () -> IScheduler> {
     val map = HashMap<String, () -> IScheduler>()
     map["worst_fit"] = { WorstFitScheduler() }
+    map["best_fit"] = { BestFitScheduler() }
+    map["first_fit"] = { FirstFitScheduler() }
+    map["balanced_fit"] = { BalancedFitScheduler() }
 
     return Collections.unmodifiableMap(map)
 }

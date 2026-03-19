@@ -1,12 +1,9 @@
 package cn.edu.buaa.scs.vm.schedule
 
 import cn.edu.buaa.scs.vm.ScheduleItem
-import cn.edu.buaa.scs.vm.cpuWeight
-import cn.edu.buaa.scs.vm.diskWeight
-import cn.edu.buaa.scs.vm.memoryWeight
 import kotlin.math.abs
 
-internal class WorstFitScheduler : IScheduler {
+internal class BalancedFitScheduler : IScheduler {
     override fun schedule(
         cpu: Int,
         memory: Int,
@@ -28,8 +25,8 @@ internal class WorstFitScheduler : IScheduler {
     )
 
     private data class SchedulePolicy(
-        val minHeadroom: Double,            // 安全水位
-        val enableImbalancePenalty: Boolean // 是否启用均衡惩罚
+        val minHeadroom: Double,
+        val enableImbalancePenalty: Boolean
     )
 
     private fun getPlatformFactor(platform: String): Double {
@@ -42,9 +39,6 @@ internal class WorstFitScheduler : IScheduler {
         hosts: List<ScheduleItem>,
         policy: SchedulePolicy
     ): String? {
-
-        val totalWeight = cpuWeight + memoryWeight + diskWeight
-
         val candidates = hosts.mapNotNull { item ->
             val host = item.host
 
@@ -55,38 +49,28 @@ internal class WorstFitScheduler : IScheduler {
             val memRemain = host.totalMemMB - host.usedMemMB
             val diskRemain = host.totalStorageBytes - host.usedStorageBytes
 
-            // 放进去之后的剩余比例
             val memAfter = (memRemain - memory) / host.totalMemMB
             val diskAfter = (diskRemain - diskSize).toDouble() / host.totalStorageBytes
 
-            // 安全水位（after）
             if (memAfter < policy.minHeadroom ||
                 diskAfter < policy.minHeadroom
             ) {
                 return@mapNotNull null
             }
 
-            // Worst Fit 核心评分
-            val score =
-                        memAfter * (memoryWeight / totalWeight) +
-                        diskAfter * (diskWeight / totalWeight)
+            val imbalance = abs(memAfter - diskAfter)
 
-            // 资源均衡惩罚
-            val imbalancePenalty = abs(memAfter - diskAfter)
 
-            // 平台均衡因子
             val platformFactor = getPlatformFactor(item.platform)
 
-            val finalScore =
-                score * platformFactor -
-                        (if (policy.enableImbalancePenalty) imbalancePenalty * 0.3 else 0.0)
+            val imbalancePenalty =
+                imbalance * platformFactor
 
-            item to finalScore
+            item to imbalancePenalty
         }
 
         if (candidates.isEmpty()) return null
 
-        return candidates.maxBy { it.second }.first.platform
+        return candidates.minBy { it.second }.first.platform
     }
 }
-

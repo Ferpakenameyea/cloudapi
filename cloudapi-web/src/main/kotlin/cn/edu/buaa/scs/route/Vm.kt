@@ -1,13 +1,17 @@
 package cn.edu.buaa.scs.route
 
 import cn.edu.buaa.scs.controller.models.*
+import cn.edu.buaa.scs.error.AuthorizationException
 import cn.edu.buaa.scs.controller.models.VirtualMachine as VirtualMachineResponse
 import cn.edu.buaa.scs.error.BadRequestException
+import cn.edu.buaa.scs.error.NotFoundException
 import cn.edu.buaa.scs.kube.vmKubeClient
 import cn.edu.buaa.scs.model.VirtualMachine
 import cn.edu.buaa.scs.model.VmApply
 import cn.edu.buaa.scs.service.namespaceName
 import cn.edu.buaa.scs.service.vm
+import cn.edu.buaa.scs.vm.schedule.NotEnoughResourceForScheduleException
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -123,15 +127,25 @@ fun Route.vmRoute() {
                 }
 
                 patch {
-                    call.respond(
-                        call.convertVmApplyResponse(
-                            call.vm.handleApply(
-                                call.getApplyIdFromPath(),
-                                call.request.queryParameters["approve"]?.toBoolean() ?: false,
-                                call.request.queryParameters["reply"] ?: ""
-                            )
-                        )
+                    call.vm.handleApply(
+                        call.getApplyIdFromPath(),
+                        call.request.queryParameters["approve"]?.toBoolean() ?: false,
+                        call.request.queryParameters["reply"] ?: ""
                     )
+                        .map { call.convertVmApplyResponse(it) }
+                        .onSuccess { call.respond(it) }
+                        .onFailure {
+                            val status = when(it) {
+                                is NotEnoughResourceForScheduleException -> HttpStatusCode.TooManyRequests
+                                is IllegalArgumentException -> HttpStatusCode.BadRequest
+                                is AuthorizationException -> HttpStatusCode.Unauthorized
+                                is NotFoundException -> HttpStatusCode.NotFound
+                                else -> HttpStatusCode.InternalServerError
+                            }
+                            call.respond(
+                                status,
+                                message = it.message!!)
+                        }
                 }
 
                 route("/vms") {

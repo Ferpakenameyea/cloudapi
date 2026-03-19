@@ -102,7 +102,14 @@ fun reschedule(vmApply: VmApply): String {
 internal data class ScheduleItem(
     val host: Host,
     val platform: String,
-)
+) {
+    fun canHold(memory: Int, diskSize: Long): Boolean {
+        val memRemain = host.totalMemMB - host.usedMemMB
+        val diskRemain = host.totalStorageBytes - host.usedStorageBytes
+
+        return (memRemain >= memory && diskRemain >= diskSize)
+    }
+}
 
 internal data class AlternateItem(
     @field:JsonProperty("sangfor_uuid")
