@@ -242,6 +242,7 @@ internal fun ApplicationCall.convertVmApplyResponse(vmApply: VmApply) = CreateVm
     actualNum = vmApply.getActualNum(),
     dueTime = vmApply.dueTime,
     replyMsg = vmApply.replyMsg,
+    acceptSchedule = vmApply.acceptSchedule,
     process = this.vm.getVmApplyProcess(vmApply).let { (wanted, actual) -> VmApplyProcess(wanted, actual) },
 )
 

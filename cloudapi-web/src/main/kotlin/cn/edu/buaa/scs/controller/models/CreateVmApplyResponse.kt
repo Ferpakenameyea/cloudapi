@@ -63,6 +63,8 @@ data class CreateVmApplyResponse(
     val actualNum: kotlin.Int,
     /* 最终生成的虚拟机的名称的前缀 */
     val namePrefix: kotlin.String,
+    /* 申请是否接受虚拟机调配 */
+    val acceptSchedule: kotlin.Boolean,
     val process: VmApplyProcess,
     val studentId: SimpleUser? = null,
     val teacherId: SimpleUser? = null,
