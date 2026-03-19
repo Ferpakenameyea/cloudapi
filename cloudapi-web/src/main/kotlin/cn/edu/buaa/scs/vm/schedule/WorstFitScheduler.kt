@@ -1,7 +1,6 @@
 package cn.edu.buaa.scs.vm.schedule
 
 import cn.edu.buaa.scs.vm.ScheduleItem
-import cn.edu.buaa.scs.vm.cpuWeight
 import cn.edu.buaa.scs.vm.diskWeight
 import cn.edu.buaa.scs.vm.memoryWeight
 import kotlin.math.abs
@@ -43,7 +42,7 @@ internal class WorstFitScheduler : IScheduler {
         policy: SchedulePolicy
     ): String? {
 
-        val totalWeight = cpuWeight + memoryWeight + diskWeight
+        val totalWeight = memoryWeight + diskWeight
 
         val candidates = hosts.mapNotNull { item ->
             val host = item.host
@@ -54,6 +53,7 @@ internal class WorstFitScheduler : IScheduler {
 
             val memRemain = host.totalMemMB - host.usedMemMB
             val diskRemain = host.totalStorageBytes - host.usedStorageBytes
+            val cpuRemain = host.totalCPUMhz - host.usedCPUMhz
 
             // 放进去之后的剩余比例
             val memAfter = (memRemain - memory) / host.totalMemMB
@@ -74,12 +74,16 @@ internal class WorstFitScheduler : IScheduler {
             // 资源均衡惩罚
             val imbalancePenalty = abs(memAfter - diskAfter)
 
+            val cpuUsage = 1.0 - (cpuRemain / host.totalCPUMhz)
+            val cpuPenalty = cpuUsage * cpuUsage * 0.3
+
             // 平台均衡因子
             val platformFactor = getPlatformFactor(item.platform)
 
             val finalScore =
                 score * platformFactor -
-                        (if (policy.enableImbalancePenalty) imbalancePenalty * 0.3 else 0.0)
+                (if (policy.enableImbalancePenalty) imbalancePenalty * 0.3 else 0.0) -
+                cpuPenalty
 
             item to finalScore
         }

@@ -35,6 +35,7 @@ private fun initSchedulerMap(): Map<String, () -> IScheduler> {
     map["best_fit"] = { BestFitScheduler() }
     map["first_fit"] = { FirstFitScheduler() }
     map["balanced_fit"] = { BalancedFitScheduler() }
+    map["poll"] = { PollScheduler() }
 
     return Collections.unmodifiableMap(map)
 }

@@ -48,6 +48,7 @@ internal class BalancedFitScheduler : IScheduler {
 
             val memRemain = host.totalMemMB - host.usedMemMB
             val diskRemain = host.totalStorageBytes - host.usedStorageBytes
+            val cpuRemain = host.totalCPUMhz - host.usedCPUMhz
 
             val memAfter = (memRemain - memory) / host.totalMemMB
             val diskAfter = (diskRemain - diskSize).toDouble() / host.totalStorageBytes
@@ -60,13 +61,15 @@ internal class BalancedFitScheduler : IScheduler {
 
             val imbalance = abs(memAfter - diskAfter)
 
+            val cpuUsage = 1.0 - (cpuRemain / host.totalCPUMhz)
+            val cpuPenalty = cpuUsage * cpuUsage * 0.3
 
             val platformFactor = getPlatformFactor(item.platform)
 
-            val imbalancePenalty =
-                imbalance * platformFactor
+            val totalPenalty =
+                imbalance * platformFactor + cpuPenalty
 
-            item to imbalancePenalty
+            item to totalPenalty
         }
 
         if (candidates.isEmpty()) return null

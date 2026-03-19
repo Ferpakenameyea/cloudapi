@@ -42,7 +42,7 @@ internal class BestFitScheduler : IScheduler {
         hosts: List<ScheduleItem>,
         policy: SchedulePolicy
     ): String? {
-        val totalWeight = cpuWeight + memoryWeight + diskWeight
+        val totalWeight = memoryWeight + diskWeight
 
         val candidates = hosts.mapNotNull { item ->
             val host = item.host
@@ -53,6 +53,7 @@ internal class BestFitScheduler : IScheduler {
 
             val memRemain = host.totalMemMB - host.usedMemMB
             val diskRemain = host.totalStorageBytes - host.usedStorageBytes
+            val cpuRemain = host.totalCPUMhz - host.usedCPUMhz
 
             val memAfter = (memRemain - memory).toDouble() / host.totalMemMB
             val diskAfter = (diskRemain - diskSize).toDouble() / host.totalStorageBytes
@@ -71,14 +72,18 @@ internal class BestFitScheduler : IScheduler {
                         memUsage * (memoryWeight / totalWeight) +
                         diskUsage * (diskWeight / totalWeight)
 
+            val cpuUsage = 1.0 - (cpuRemain / host.totalCPUMhz)
+            val cpuPenalty = cpuUsage * cpuUsage * 0.3
+
             // 均衡惩罚
             val imbalancePenalty = abs(memAfter - diskAfter)
 
             val platformFactor = getPlatformFactor(item.platform)
 
             val finalScore =
-                score * platformFactor +
-                        (if (policy.enableImbalancePenalty) imbalancePenalty * 0.3 else 0.0)
+                score * platformFactor -
+                        (if (policy.enableImbalancePenalty) imbalancePenalty * 0.3 else 0.0) -
+                        cpuPenalty
 
             item to finalScore
         }
