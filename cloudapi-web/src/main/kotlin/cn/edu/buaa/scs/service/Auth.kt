@@ -27,6 +27,7 @@ import io.ktor.server.plugins.*
 import org.ktorm.dsl.and
 import org.ktorm.dsl.eq
 import org.ktorm.dsl.inList
+import org.ktorm.dsl.update
 import org.ktorm.entity.filter
 import org.ktorm.entity.find
 import org.ktorm.entity.map
@@ -310,6 +311,29 @@ class AuthService(val call: ApplicationCall) : IService {
         user.flushChanges()
 
         return afterLogin(generateRSAToken(user.id), user)
+    }
+
+    fun forcedActivateAllUsers() {
+        val log = logger("user-activate-all")()
+        val caller = call.user()
+        if (!caller.isAdmin()) {
+            log.warn("User {} (with id: {}, nickname: {}) is trying to access activate all users with out permission.",
+                caller.name,
+                caller.id,
+                caller.nickName)
+            throw BadRequestException("只有管理员才能强制激活所有的用户")
+        }
+
+        mysql.update(Users) {
+            where { it.isAccepted.eq(false) }
+            set(it.isAccepted, true)
+        }
+        log.warn("All users in database is forced activated by user {} (with id: {}, nickname: {})!",
+            caller.name,
+            caller.id,
+            caller.nickName)
+
+        return
     }
 
     fun resetPassword(token: String, password: String) {

@@ -118,4 +118,11 @@ fun Route.authRoute() {
             call.respond("OK")
         }
     }
+
+    route("/forcedActivateAllUsers") {
+        post {
+            call.auth.forcedActivateAllUsers()
+            call.respond("OK")
+        }
+    }
 }
