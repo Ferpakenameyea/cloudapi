@@ -121,7 +121,8 @@ fun Route.authRoute() {
 
     route("/forcedActivateAllUsers") {
         post {
-            call.auth.forcedActivateAllUsers()
+            val req = call.receive<ForcedActivateAllUsersRequest>()
+            call.auth.forcedActivateAllUsers(req.password)
             call.respond("OK")
         }
     }

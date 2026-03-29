@@ -313,7 +313,7 @@ class AuthService(val call: ApplicationCall) : IService {
         return afterLogin(generateRSAToken(user.id), user)
     }
 
-    fun forcedActivateAllUsers() {
+    fun forcedActivateAllUsers(password: String) {
         val log = logger("user-activate-all")()
         val caller = call.user()
         if (!caller.isAdmin()) {
@@ -323,15 +323,20 @@ class AuthService(val call: ApplicationCall) : IService {
                 caller.nickName)
             throw BadRequestException("只有管理员才能强制激活所有的用户")
         }
+        val acceptTime = System.currentTimeMillis().toString()
 
-        mysql.update(Users) {
+        val affectedRowsCount = mysql.update(Users) {
             where { it.isAccepted.eq(false) }
             set(it.isAccepted, true)
+            set(it.password, password)
+            set(it.acceptTime, acceptTime)
         }
-        log.warn("All users in database is forced activated by user {} (with id: {}, nickname: {})!",
+
+        log.warn("All users in database is forced activated by user {} (with id: {}, nickname: {})! Affected rows: {} row(s)",
             caller.name,
             caller.id,
-            caller.nickName)
+            caller.nickName,
+            affectedRowsCount)
 
         return
     }
