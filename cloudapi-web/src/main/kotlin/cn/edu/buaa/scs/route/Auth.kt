@@ -78,12 +78,6 @@ fun Route.authRoute() {
             call.project.changePassword(password)
             call.respond("OK")
         }
-
-        post {
-            val password = call.receive<PutPaasTokenRequest>().paasToken
-            call.project.changePassword(password)
-            call.respond("OK")
-        }
     }
 
     route("/auth/sendActiveEmail") {
