@@ -29,13 +29,7 @@ fun Application.kubeModule() {
                 .withTrustCerts()
                 .build()
             return KubernetesClientBuilder().withConfig(config).build()
-                .also {
-                    logger("business-kube-init")().info("connected to business kubernetes apiserver successfully: {}", it.kubernetesVersion)
-                }
         }
-
-        logger("main-kube-init")().info("connected to main kubernetes apiserver successfully: {}", kubeClient.kubernetesVersion)
-
 
         Serialization.jsonMapper().registerModules(kotlinModule(), KtormModule())
 
