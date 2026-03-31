@@ -17,25 +17,33 @@ val kubeClient: KubernetesClient by lazy { KubernetesClientBuilder().build() }
 
 @Suppress("unused")
 fun Application.kubeModule() {
-    val masterUrl = getConfigString("kube.business.masterUrl")
-    val token = getConfigString("kube.business.token")
-    businessKubeClientBuilder = fun(): KubernetesClient {
-        val config = ConfigBuilder()
-            .withMasterUrl(masterUrl)
-            .withApiVersion("v1")
-            .withOauthToken(token)
-            .withTrustCerts()
-            .build()
-        return KubernetesClientBuilder().withConfig(config).build()
+    try {
+        val masterUrl = getConfigString("kube.business.masterUrl")
+        val token = getConfigString("kube.business.token")
+
+        businessKubeClientBuilder = fun(): KubernetesClient {
+            val config = ConfigBuilder()
+                .withMasterUrl(masterUrl)
+                .withApiVersion("v1")
+                .withOauthToken(token)
+                .withTrustCerts()
+                .build()
+            return KubernetesClientBuilder().withConfig(config).build()
+                .also {
+                    logger("business-kube-init")().info("connected to business kubernetes apiserver successfully: {}", it.kubernetesVersion)
+                }
+        }
+
+        logger("main-kube-init")().info("connected to main kubernetes apiserver successfully: {}", kubeClient.kubernetesVersion)
+
+
+        Serialization.jsonMapper().registerModules(kotlinModule(), KtormModule())
+
+        registerVirtualMachineOperator()
+
+        ImageBuildRoutine.run()
+    } catch (e: Exception) {
+        logger("kube-init")().error("Fatal error in kubernetes initialization.", e)
+        throw RuntimeException(e)
     }
-    businessKubeClientBuilder().use {
-        logger("business-kube")().info { "connected to business kubernetes apiserver successfully: ${it.kubernetesVersion.gitVersion}" }
-    }
-
-    Serialization.jsonMapper().registerModules(kotlinModule(), KtormModule())
-
-    logger("kube")().info { "connected to official kubernetes apiserver successfully: ${kubeClient.kubernetesVersion.gitVersion}" }
-    registerVirtualMachineOperator()
-
-    ImageBuildRoutine.run()
 }
