@@ -6,6 +6,7 @@ import cn.edu.buaa.scs.error.RemoteServiceException
 import cn.edu.buaa.scs.project.IProjectManager
 import cn.edu.buaa.scs.utils.HttpClientWrapper
 import cn.edu.buaa.scs.utils.getConfigString
+import cn.edu.buaa.scs.utils.logger
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -20,13 +21,29 @@ object GitClient : IProjectManager {
     val gitRepoUrlPrefix = "${Constant.baseUrl}/git"
 
     internal val client by lazy {
+        val log = logger("git-client-init")()
+        val urlProtocol = if (application.getConfigString("bugit.protocol", "https").lowercase() == "http")
+            URLProtocol.HTTP else URLProtocol.HTTPS
+
+        if (urlProtocol == URLProtocol.HTTP) {
+            log.warn("You're using http (not secured) for bugit connection.")
+        }
+
+        val portStringValue = application.getConfigString("bugit.port", "3000")
+        val portValue = portStringValue.toIntOrNull()
+            .takeIf { it in 1..65535 } ?: run {
+                log.error("Error when parsing port: {}. Using 3000 as default", portStringValue)
+                3000
+            }
+
         HttpClientWrapper(
             HttpClient(CIO) {
                 val adminToken = application.getConfigString("bugit.adminToken")
                 defaultRequest {
                     url {
-                        protocol = URLProtocol.HTTPS
+                        protocol = urlProtocol
                         host = application.getConfigString("bugit.host")
+                        port = portValue
                     }
                     header(HttpHeaders.Authorization, "token $adminToken")
                 }
