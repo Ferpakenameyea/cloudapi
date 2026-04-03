@@ -293,7 +293,7 @@ class AuthService(val call: ApplicationCall) : IService {
         user.acceptTime = System.currentTimeMillis().toString()
         user.flushChanges()
 
-//        call.project.createUser(user)
+        call.project.createUser(user)
 
         return afterLogin(generateRSAToken(user.id), user)
     }
