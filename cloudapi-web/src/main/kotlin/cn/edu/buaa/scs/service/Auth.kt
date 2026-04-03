@@ -30,6 +30,7 @@ import org.ktorm.dsl.inList
 import org.ktorm.dsl.update
 import org.ktorm.entity.filter
 import org.ktorm.entity.find
+import org.ktorm.entity.forEach
 import org.ktorm.entity.map
 import java.io.ByteArrayOutputStream
 import java.util.*
@@ -310,10 +311,12 @@ class AuthService(val call: ApplicationCall) : IService {
         user.acceptTime = System.currentTimeMillis().toString()
         user.flushChanges()
 
+        call.project.createUser(user)
+
         return afterLogin(generateRSAToken(user.id), user)
     }
 
-    fun forcedActivateAllUsers(password: String) {
+    suspend fun forcedActivateAllUsers(password: String) {
         val log = logger("user-activate-all")()
         val caller = call.user()
         if (!caller.isAdmin()) {
@@ -324,6 +327,12 @@ class AuthService(val call: ApplicationCall) : IService {
             throw BadRequestException("只有管理员才能强制激活所有的用户")
         }
         val acceptTime = System.currentTimeMillis().toString()
+
+        mysql.users
+            .filter { it.isAccepted.eq(false) }
+            .forEach {
+                call.project.createUser(it)
+            }
 
         val affectedRowsCount = mysql.update(Users) {
             where { it.isAccepted.eq(false) }
