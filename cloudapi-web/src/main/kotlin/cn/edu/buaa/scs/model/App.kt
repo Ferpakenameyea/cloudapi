@@ -29,7 +29,7 @@ open class Apps(alias: String?) : Table<App>("application", alias) {
     val id = int("id").primaryKey().bindTo { it.id }
 
     @SuppressWarnings("unused")
-    val url = varchar("url")
+    val url = varchar("url").bindTo { it.url }
 
     @SuppressWarnings("unused")
     val cloud = boolean("cloud").bindTo { it.cloud }
