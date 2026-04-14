@@ -23,6 +23,7 @@ fun Application.configureRouting() {
             logRoute()
             adminRoute()
             termRoute()
+            applicationRoute()
             // 添加其他的 route
 
 
