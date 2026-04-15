@@ -30,7 +30,7 @@ class AppService(val call: ApplicationCall) : IService {
         title: String,
         colorClass: String,
         logoClass: String,
-        logoText: Char,
+        logoText: String,
         displayPriority: Int
     ): App {
         if (!call.user().isAdmin()) {
@@ -43,7 +43,7 @@ class AppService(val call: ApplicationCall) : IService {
             this.title              = title
             this.colorClass         = colorClass
             this.logoClass          = logoClass
-            this.logoText           = logoText.toString()
+            this.logoText           = logoText
             this.displayPriority    = displayPriority
         }
 
@@ -69,7 +69,7 @@ class AppService(val call: ApplicationCall) : IService {
         title: String?,
         colorClass: String?,
         logoClass: String?,
-        logoText: Char?,
+        logoText: String?,
         displayPriority: Int?
     ): App {
         if (!call.user().isAdmin()) {
@@ -87,7 +87,7 @@ class AppService(val call: ApplicationCall) : IService {
         title?.apply            { app.title = this }
         colorClass?.apply       { app.colorClass = this }
         logoClass?.apply        { app.logoClass = this }
-        logoText?.apply         { app.logoText = this.toString() }
+        logoText?.apply         { app.logoText = this }
         displayPriority?.apply  { app.displayPriority = this }
 
         // update the application

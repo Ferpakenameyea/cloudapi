@@ -6,6 +6,6 @@ data class CreateApplicationRequest (
     val title: String,
     val colorClass: String = "green",
     val logoClass: String = "",
-    val logoText: Char,
+    val logoText: String = "",
     val displayPriority: Int = 0
 );

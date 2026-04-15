@@ -24,7 +24,7 @@ fun Route.applicationRoute() {
         val title: String,
         val colorClass: String,
         val logoClass: String,
-        val logoText: Char,
+        val logoText: String,
         val displayPriority: Int
     );
 
@@ -35,8 +35,7 @@ fun Route.applicationRoute() {
             title           = app.title,
             colorClass      = app.colorClass,
             logoClass       = app.logoClass,
-            logoText        = app.logoText.firstOrNull() ?:
-                throw Exception("App ${app.title} (with url ${app.url}) doesn't have a logo text."),
+            logoText        = app.logoText,
             displayPriority = app.displayPriority
         )
 

@@ -6,6 +6,6 @@ data class EditApplicationRequest (
     val title: String?          = null,
     val colorClass: String?     = null,
     val logoClass: String?      = null,
-    val logoText: Char?         = null,
+    val logoText: String?       = null,
     val displayPriority: Int?   = null
 );
