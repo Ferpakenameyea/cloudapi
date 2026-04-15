@@ -2,6 +2,7 @@ package cn.edu.buaa.scs.service
 
 import cn.edu.buaa.scs.error.AuthorizationException
 import cn.edu.buaa.scs.error.BadRequestException
+import cn.edu.buaa.scs.error.NotFoundException
 import cn.edu.buaa.scs.model.App
 import cn.edu.buaa.scs.model.apps
 import cn.edu.buaa.scs.storage.mysql
@@ -10,6 +11,7 @@ import io.ktor.server.application.ApplicationCall
 import org.ktorm.dsl.eq
 import org.ktorm.entity.add
 import org.ktorm.entity.filter
+import org.ktorm.entity.first
 import org.ktorm.entity.firstOrNull
 import org.ktorm.entity.sortedByDescending
 import org.ktorm.entity.take
@@ -90,6 +92,14 @@ class AppService(val call: ApplicationCall) : IService {
 
         // update the application
         mysql.apps.update(app)
+
+        return app
+    }
+
+    fun getApplication(id: Int): App {
+        val app = mysql.apps.filter { it.id eq id }
+            .firstOrNull()
+            ?: throw NotFoundException("Given app with id $id does not exist")
 
         return app
     }

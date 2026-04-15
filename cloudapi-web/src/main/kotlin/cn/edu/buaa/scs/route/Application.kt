@@ -74,6 +74,13 @@ fun Route.applicationRoute() {
 
                 call.respond(convertAppModel(appSqlModel))
             }
+
+            get {
+                val id = call.getAppIdFromPath()
+                call.respond(convertAppModel(
+                    call.apps.getApplication(id)
+                ))
+            }
         }
     }
 
