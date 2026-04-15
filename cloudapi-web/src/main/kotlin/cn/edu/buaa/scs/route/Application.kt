@@ -5,11 +5,13 @@ import cn.edu.buaa.scs.controller.models.EditApplicationRequest
 import cn.edu.buaa.scs.error.BadRequestException
 import cn.edu.buaa.scs.model.App
 import cn.edu.buaa.scs.service.apps
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
@@ -79,6 +81,12 @@ fun Route.applicationRoute() {
                 call.respond(convertAppModel(
                     call.apps.getApplication(id)
                 ))
+            }
+
+            delete {
+                val id = call.getAppIdFromPath()
+                call.apps.deleteApplication(id)
+                call.respond(HttpStatusCode.OK)
             }
         }
     }

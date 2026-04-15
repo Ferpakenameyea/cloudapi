@@ -13,6 +13,7 @@ import org.ktorm.entity.add
 import org.ktorm.entity.filter
 import org.ktorm.entity.first
 import org.ktorm.entity.firstOrNull
+import org.ktorm.entity.removeIf
 import org.ktorm.entity.sortedByDescending
 import org.ktorm.entity.take
 import org.ktorm.entity.toList
@@ -102,5 +103,16 @@ class AppService(val call: ApplicationCall) : IService {
             ?: throw NotFoundException("Given app with id $id does not exist")
 
         return app
+    }
+
+    fun deleteApplication(id: Int) {
+        if (!call.user().isAdmin()) {
+            throw AuthorizationException("Only admins are allowed to delete applications")
+        }
+
+        val count = mysql.apps.removeIf { it.id eq id }
+        if (count == 0) {
+            throw NotFoundException("Given app with id $id does not exist")
+        }
     }
 }
