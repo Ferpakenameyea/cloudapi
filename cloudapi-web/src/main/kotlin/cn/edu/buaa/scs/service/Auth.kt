@@ -200,7 +200,7 @@ class AuthService(val call: ApplicationCall) : IService {
         if (user.isAccepted) {
             throw cn.edu.buaa.scs.error.BadRequestException("用户已经激活")
         }
-        val token = RandomStringUtils.random(8)
+        val token = RandomStringUtils.randomAlphanumeric(8)
 
         val activeMsg = ActiveMessage(id, name, email)
 
