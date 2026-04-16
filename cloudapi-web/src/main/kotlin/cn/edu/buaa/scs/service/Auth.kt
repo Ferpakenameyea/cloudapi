@@ -24,6 +24,7 @@ import io.ktor.client.request.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.UnauthorizedResponse
 import io.ktor.server.plugins.*
+import org.apache.commons.lang3.RandomStringUtils
 import org.ktorm.dsl.and
 import org.ktorm.dsl.eq
 import org.ktorm.dsl.inList
@@ -199,9 +200,7 @@ class AuthService(val call: ApplicationCall) : IService {
         if (user.isAccepted) {
             throw cn.edu.buaa.scs.error.BadRequestException("用户已经激活")
         }
-        val token = "${user.id}${user.password}${System.currentTimeMillis()}".md5() + UlidCreator.getUlid().toString()
-
-        val activeUrl = "${Constant.baseUrl}/#/security/activateAccount?token=$token"
+        val token = RandomStringUtils.random(8)
 
         val activeMsg = ActiveMessage(id, name, email)
 
@@ -211,23 +210,14 @@ class AuthService(val call: ApplicationCall) : IService {
             <tr>
                 <td width="24">&nbsp;</td>
                 <td style="color:#858585; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:20px; padding-top:18px;"
-                    colspan="2">请点击以下网址来激活用户
+                    colspan="2">您的邮箱激活码是：
                 </td>
                 <td width="24">&nbsp;</td>
             </tr>
             <tr>
                 <td width="24">&nbsp;</td>
                 <td style="color:#858585; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:20px; padding-top:18px;"
-                    colspan="2"><a style="color:#50b7f1;text-decoration:none;font-weight:bold" rel="noopener noreferrer"
-                                   href="$activeUrl">账户激活</a>
-                </td>
-                <td width="24">&nbsp;</td>
-            </tr>
-            <tr>
-                <td width="24">&nbsp;</td>
-                <td style="color:#858585; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:20px; padding-top:24px;"
-                    colspan="2">如果上述链接无法点击，请复制以下链接<a rel="noopener noreferrer"
-                                                                      href="$activeUrl">$activeUrl</a>
+                    colspan="2"><span style="color:#50b7f1;text-decoration:none;font-weight:bold" rel="noopener noreferrer">$token</span>
                 </td>
                 <td width="24">&nbsp;</td>
             </tr>
