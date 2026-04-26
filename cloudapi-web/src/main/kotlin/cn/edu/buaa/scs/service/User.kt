@@ -6,8 +6,10 @@ import cn.edu.buaa.scs.controller.models.PatchUserRequest
 import cn.edu.buaa.scs.error.AuthorizationException
 import cn.edu.buaa.scs.error.BadRequestException
 import cn.edu.buaa.scs.error.BusinessException
+import cn.edu.buaa.scs.error.NotFoundException
 import cn.edu.buaa.scs.model.*
 import cn.edu.buaa.scs.storage.mysql
+import cn.edu.buaa.scs.utils.logger
 import cn.edu.buaa.scs.utils.user
 import cn.edu.buaa.scs.utils.userId
 import io.ktor.server.application.*
@@ -164,6 +166,67 @@ class UserService(val call: ApplicationCall) : IService {
                 name = department.name,
             )
         }
+    }
+
+    fun addDepartment(id: String, name: String): DepartmentModel {
+        if (!call.user().isAdmin()) {
+            throw AuthorizationException("Only admin can add department!")
+        }
+
+        if (mysql.departments.any { it.id.eq(id) }) {
+            throw BadRequestException("A department id $id already exists!")
+        }
+
+        val department = Department {
+            this.id = id
+            this.name = name
+        }
+
+        mysql.departments.add(department)
+        return DepartmentModel(
+            id = department.id,
+            name = department.name,
+        )
+    }
+
+    fun editDepartment(id: String, name: String): DepartmentModel {
+        if (!call.user().isAdmin()) {
+            throw AuthorizationException("Only admin can edit department!")
+        }
+
+        val department = mysql.departments.firstOrNull { it.id.eq(id )}
+
+        if (department == null) {
+            throw NotFoundException("A department id $id does not exist!")
+        }
+
+        department.name = name
+        department.flushChanges()
+
+        return DepartmentModel(
+            id = department.id,
+            name = department.name,
+        )
+    }
+
+    fun deleteDepartment(id: String) {
+        val log = logger("department-delete")()
+        val user = call.user()
+        if (!user.isAdmin()) {
+            throw AuthorizationException("Only admin can delete department!")
+        }
+
+        val lineChanged = mysql.departments.removeIf { it.id.eq(id) }
+        if (lineChanged == 0) {
+            throw NotFoundException("A department id $id does not exist!")
+        }
+
+        log.info("User {}(user id: {}) deleted department with id: {}",
+            user.name,
+            user.id,
+            id)
+
+        return
     }
 
     fun batchInsertUser(users: List<User>) {

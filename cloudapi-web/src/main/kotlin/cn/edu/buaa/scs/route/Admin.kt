@@ -1,9 +1,12 @@
 package cn.edu.buaa.scs.route
 
+import cn.edu.buaa.scs.controller.models.CreateDepartmentRequest
 import cn.edu.buaa.scs.controller.models.CreateUserRequest
 import cn.edu.buaa.scs.controller.models.DeleteAdminUserRequest
+import cn.edu.buaa.scs.error.BadRequestException
 import cn.edu.buaa.scs.model.UserRole
 import cn.edu.buaa.scs.service.admin
+import cn.edu.buaa.scs.service.userService
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -26,6 +29,37 @@ fun Route.adminRoute() {
                 val userIds = req.userIds
                 call.admin.deleteUsers(userIds)
                 call.respond("OK")
+            }
+        }
+
+        route("/department") {
+            post {
+                val req = call.receive<CreateDepartmentRequest>()
+                call.respond(call.userService.addDepartment(req.id, req.name))
+            }
+
+            route("/{id}") {
+
+                fun ApplicationCall.getParameterFromPath(parameterName: String): String {
+                    val value = this.parameters[parameterName]
+                        ?: throw BadRequestException("Parameter $parameterName not provided")
+
+                    return value
+                }
+
+                // note: name is passed through query parameter(directly in url)
+                patch {
+                    val id = call.getParameterFromPath("id")
+                    val newName = call.getParameterFromPath("name")
+
+                    call.respond(call.userService.editDepartment(id, newName))
+                }
+
+                delete {
+                    val id = call.getParameterFromPath("id")
+                    call.userService.deleteDepartment(id)
+                    call.respond("Deleted")
+                }
             }
         }
     }
