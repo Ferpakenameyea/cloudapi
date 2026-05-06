@@ -3,6 +3,7 @@ package cn.edu.buaa.scs.service
 import cn.edu.buaa.scs.controller.models.AssistantModel
 import cn.edu.buaa.scs.controller.models.DepartmentModel
 import cn.edu.buaa.scs.controller.models.PatchUserRequest
+import cn.edu.buaa.scs.controller.models.SearchUserType
 import cn.edu.buaa.scs.error.AuthorizationException
 import cn.edu.buaa.scs.error.BadRequestException
 import cn.edu.buaa.scs.error.BusinessException
@@ -244,6 +245,23 @@ class UserService(val call: ApplicationCall) : IService {
                     set(it.acceptTime, Date().toString())
                 }
             }
+        }
+    }
+
+    fun searchUser(type: SearchUserType, keyword: String): List<User> {
+        when (type) {
+            SearchUserType.ById -> {
+                val user = mysql.users.find { it.id.eq(keyword) }
+                if (user == null) {
+                    return Collections.emptyList()
+                }
+
+                return Collections.singletonList(user)
+            }
+            SearchUserType.ByName ->
+                return mysql.users
+                    .filter { it.name.like("%$keyword%")}
+                    .toList()
         }
     }
 }
