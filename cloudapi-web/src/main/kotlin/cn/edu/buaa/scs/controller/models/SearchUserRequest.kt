@@ -4,8 +4,3 @@ enum class SearchUserType {
     ById,
     ByName
 }
-
-data class SearchUserRequest(
-    val type: SearchUserType,
-    val keyword: String
-)

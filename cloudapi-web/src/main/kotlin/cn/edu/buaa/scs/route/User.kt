@@ -1,7 +1,7 @@
 package cn.edu.buaa.scs.route
 
 import cn.edu.buaa.scs.controller.models.ChangePasswordRequest
-import cn.edu.buaa.scs.controller.models.SearchUserRequest
+import cn.edu.buaa.scs.controller.models.SearchUserType
 import cn.edu.buaa.scs.controller.models.SimpleUser
 import cn.edu.buaa.scs.controller.models.UserModel
 import cn.edu.buaa.scs.error.BadRequestException
@@ -65,10 +65,22 @@ fun Route.userRoute() {
 
     route("/search/user") {
         get {
-            val searchReq = call.receive<SearchUserRequest>()
+            val typeString = call.parameters["type"] ?: SearchUserType.ById.toString()
+            val keyword = call.parameters["keyword"]
+
+            if (keyword == null) {
+                call.respond(HttpStatusCode.BadRequest, "No given search keyword")
+                return@get
+            }
+            val type: SearchUserType
+            try {
+                type = SearchUserType.valueOf(typeString)
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, "Invalid search type")
+                return@get
+            }
             val resultList = call.userService.searchUser(
-                searchReq.type,
-                searchReq.keyword)
+                type, keyword)
 
             val response = resultList.map { convertUserModel(it) }
             call.respond(response)
