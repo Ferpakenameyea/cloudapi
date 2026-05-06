@@ -58,7 +58,7 @@ fun Department.Companion.id(id: String): Department {
     try {
         department = departments[id]
     } finally {
-        departmentReadLock.lock()
+        departmentReadLock.unlock()
     }
 
     if (department != null) {
