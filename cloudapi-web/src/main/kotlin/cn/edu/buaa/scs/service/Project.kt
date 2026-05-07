@@ -86,8 +86,13 @@ class ProjectService(val call: ApplicationCall) : IService, FileService.FileDeco
 
         val usersWithNoPersonalProject =
             mysql.users.filter {
-                (it.id notEq "admin") and
-                        ((it.paasToken.isNull()) or (it.paasToken eq ""))
+                (it.id notEq "admin") and notExists(
+                    mysql.from(Projects)
+                        .select(Projects.id)
+                        .where(
+                            (Projects.owner eq Users.id) and (Projects.name like "personal-%")
+                        )
+                )
             }.toList()
 
         var success = 0
