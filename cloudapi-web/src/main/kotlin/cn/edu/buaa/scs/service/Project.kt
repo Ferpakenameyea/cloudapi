@@ -38,6 +38,7 @@ import org.ktorm.dsl.isNull
 import org.ktorm.dsl.like
 import org.ktorm.dsl.notEq
 import org.ktorm.dsl.notExists
+import org.ktorm.dsl.or
 import org.ktorm.dsl.select
 import org.ktorm.dsl.where
 import org.ktorm.entity.*
@@ -85,7 +86,8 @@ class ProjectService(val call: ApplicationCall) : IService, FileService.FileDeco
 
         val usersWithNoPersonalProject =
             mysql.users.filter {
-                (it.id notEq "admin") and (it.paasToken.isNull())
+                (it.id notEq "admin") and
+                        ((it.paasToken.isNull()) or (it.paasToken eq ""))
             }.toList()
 
         var success = 0
