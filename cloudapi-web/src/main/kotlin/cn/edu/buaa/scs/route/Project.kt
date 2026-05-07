@@ -54,6 +54,14 @@ fun Route.projectRoute() {
                 )
             )
         }
+
+        post("/ensure") {
+            val tuple = call.project.ensurePersonalProjects()
+            call.respond(HttpStatusCode.OK, EnsureProjectResponse(
+                tuple.first,
+                tuple.second
+            ))
+        }
     }
 
     route("/project/{projectID}") {

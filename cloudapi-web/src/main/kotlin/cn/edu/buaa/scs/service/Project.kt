@@ -32,7 +32,14 @@ import io.ktor.server.request.*
 import org.apache.commons.lang3.RandomStringUtils
 import org.ktorm.dsl.and
 import org.ktorm.dsl.eq
+import org.ktorm.dsl.from
 import org.ktorm.dsl.inList
+import org.ktorm.dsl.isNull
+import org.ktorm.dsl.like
+import org.ktorm.dsl.notEq
+import org.ktorm.dsl.notExists
+import org.ktorm.dsl.select
+import org.ktorm.dsl.where
 import org.ktorm.entity.*
 import java.util.*
 
@@ -71,6 +78,36 @@ class ProjectService(val call: ApplicationCall) : IService, FileService.FileDeco
 //        createUser(User.id(userID))
     }
 
+    suspend fun ensurePersonalProjects(): Tuple2<Int, Int> {
+        if (!call.user().isAdmin()) {
+            throw AuthorizationException("User is not admin")
+        }
+
+        val usersWithNoPersonalProject =
+            mysql.users.filter {
+                (it.id notEq "admin") and (it.paasToken.isNull())
+            }.toList()
+
+        var success = 0
+        var failed = 0
+
+        val log = logger("project-ensure")()
+        for (user in usersWithNoPersonalProject) {
+            try {
+                createUser(user)
+                success++
+                log.info("Ensured project exist for user {}({})", user.id, user.name)
+            } catch (e: Exception) {
+                failed++
+                log.error(e) {
+                    "Error creating project for user ${user.id}"
+                }
+            }
+        }
+
+        return Tuple2(success, failed)
+    }
+
     suspend fun createUser(user: User) {
         if (user.paasToken != "") return
         val paasToken = RandomStringUtils.randomAlphanumeric(13)
@@ -82,6 +119,7 @@ class ProjectService(val call: ApplicationCall) : IService, FileService.FileDeco
                 password = paasToken
             )
         }
+
         user.paasToken = paasToken
         createProjectForUser(
             user,
