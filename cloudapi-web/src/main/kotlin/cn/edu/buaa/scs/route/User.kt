@@ -172,7 +172,7 @@ internal fun convertUserModel(user: User): UserModel {
         department = user.departmentId,
         email = user.email,
         role = user.role.name.lowercase(),
-        departmentName = Department.id(user.departmentId).name,
+        departmentName = Department.id(user.departmentId)?.name ?: "未知或已删除的学院",
     )
 }
 

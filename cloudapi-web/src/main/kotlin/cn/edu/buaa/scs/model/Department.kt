@@ -51,7 +51,7 @@ val departments: HashMap<String, Department> by lazy {
     return@lazy map
 }
 
-fun Department.Companion.id(id: String): Department {
+fun Department.Companion.id(id: String): Department? {
     departmentReadLock.lock()
     var department: Department?
 
@@ -78,12 +78,12 @@ fun Department.Companion.id(id: String): Department {
             .forEach { newDepartment -> departments[newDepartment.id] = newDepartment }
 
         department = departments[id]
-        return department ?: throw BadRequestException("Department with id $id not found")
+        return department
     } finally {
         departmentWriteLock.unlock()
     }
 }
 
-fun Department.Companion.id(id: Int): Department {
+fun Department.Companion.id(id: Int): Department? {
     return Department.id(id.toString())
 }
