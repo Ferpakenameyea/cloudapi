@@ -10,4 +10,5 @@ data class Host(
     val totalStorageBytes: Long,
     val usedStorageBytes: Long,
     val count: Int,
+    val platform: String // "sangfor" | "vcenter"
 )

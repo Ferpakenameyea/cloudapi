@@ -234,6 +234,7 @@ object SangforClient : IVMClient {
                     totalStorageBytes   = resource.totalStorageBytes,
                     usedStorageBytes    = resource.usedStorageBytes,
                     count               = vmCount,
+                    platform            = "sangfor",
                 )
             }
         }

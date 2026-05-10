@@ -150,6 +150,7 @@ object VCenterWrapper {
                     totalStorageBytes = totalStorage,
                     usedStorageBytes = usedStorage,
                     count = (hostProps["vm"]!! as ArrayOfManagedObjectReference).managedObjectReference.size,
+                    platform = "vcenter"
                 )
             }
         }.getOrThrow()
