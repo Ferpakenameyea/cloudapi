@@ -143,7 +143,7 @@ class UserService(val call: ApplicationCall) : IService {
                         val user = User.id(assistant.studentId)
                         AssistantModel(
                             id = user.id,
-                            name = course.name,
+                            name = user.name,
                             courseName = course.name,
                             termName = course.term.name,
                             createdTime = assistant.createTime,
