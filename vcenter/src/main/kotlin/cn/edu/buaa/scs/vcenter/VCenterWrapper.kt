@@ -70,20 +70,51 @@ object VCenterWrapper {
                         connectionPool[channelNum] = vcenterConnect()
                         launch {
                             for (taskFunc in taskChannel) {
-                                val connection = connectionPool[channelNum] ?: vcenterConnect()
-                                try {
-                                    taskFunc(connection)
-                                } catch (e: Throwable) {
-                                    logger("vm-worker-$channelNum")().error { e.stackTraceToString() }
-                                } finally {
-                                    connectionPool[channelNum] = connection
+                                var connection = connectionPool[channelNum] ?: vcenterConnect()
+                                var error = processTask(
+                                    connection,
+                                    taskFunc,
+                                )
+
+                                if (error == null) {
+                                    continue;
                                 }
+
+                                if (isSessionError(error)) {
+                                    // try renewing the connection as a chance
+                                    // to retry the task again
+                                    connection.closeQuietly()
+                                    connection = vcenterConnect()
+                                    connectionPool[channelNum] = connection
+                                    error = processTask(
+                                        connection,
+                                        taskFunc,
+                                    )
+                                    if (error == null) {
+                                        continue
+                                    }
+                                }
+
+                                logger("vm-worker-$channelNum")()
+                                    .error(error, { "Error in request" })
                             }
                         }
                     }
                 }
             }
         }.start()
+    }
+
+    suspend fun processTask(
+        connection: Connection,
+        taskFunc: TaskFunc,
+    ): Throwable? {
+        try {
+            taskFunc(connection)
+            return null
+        } catch (e: Throwable) {
+            return e;
+        }
     }
 
     private var getAllVmsConnection: Connection? = null
@@ -95,15 +126,19 @@ object VCenterWrapper {
         try {
             vms = getAllVmsFromVCenter(getAllVmsConnection!!)
         } catch (_: Throwable) {
-            getAllVmsConnection = vcenterConnect()
+            getAllVmsConnection?.closeQuietly()
             try {
                 getAllVmsConnection = vcenterConnect()
                 vms = getAllVmsFromVCenter(getAllVmsConnection!!)
             } catch (e: Throwable) {
-                logger("vm-worker-$getAllVmsConnection")().error { e.stackTraceToString() }
+                logger("vm-worker-get-all-vms")().error { e.stackTraceToString() }
             }
         }
         return Result.success(vms ?: listOf())
+    }
+
+    private fun isSessionError(e: Throwable): Boolean {
+        return (e is InvalidLoginFaultMsg || e is RuntimeFaultFaultMsg)
     }
 
     suspend fun powerOn(uuid: String): Result<Unit> {
